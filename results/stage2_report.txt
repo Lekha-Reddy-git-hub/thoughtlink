@@ -1,0 +1,21 @@
+Stage 2 Direction Classifier: RandomForest
+Classes: ['Both Fists', 'Left Fist', 'Right Fist']
+3-class fallback used
+Test Accuracy: 0.492
+
+Cross-validation (4-class):
+  SVM_RBF: 0.274 +/- 0.029
+  RandomForest: 0.267 +/- 0.015
+  GradientBoosting: 0.262 +/- 0.020
+
+Classification Report:
+              precision    recall  f1-score   support
+
+  Both Fists       0.49      0.99      0.66      1249
+   Left Fist       0.12      0.00      0.00       608
+  Right Fist       0.40      0.00      0.01       666
+
+    accuracy                           0.49      2523
+   macro avg       0.34      0.33      0.22      2523
+weighted avg       0.38      0.49      0.33      2523
+
