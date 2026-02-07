@@ -50,7 +50,7 @@ def bci_policy_loop(ctrl, pipeline, npz_file, stop_event, set_action_fn):
     Action, _ = _import_bri()
     current_action = Action.STOP
 
-    for action_str, confidence, latency_ms in pipeline.process_file(npz_file):
+    for action_str, confidence, latency_ms, phase in pipeline.process_file(npz_file):
         if stop_event.is_set():
             break
 
@@ -58,7 +58,7 @@ def bci_policy_loop(ctrl, pipeline, npz_file, stop_event, set_action_fn):
         set_action_fn(action)
         current_action = action
 
-        print(f"  Action: {action_str:8s}  Confidence: {confidence:.2f}  Latency: {latency_ms:.1f}ms")
+        print(f"  Action: {action_str:8s} [{phase:10s}]  Confidence: {confidence:.2f}  Latency: {latency_ms:.1f}ms")
 
         # Simulate real-time: each window step = 0.5s
         sleep_time = max(0, 0.5 - (latency_ms / 1000.0))
@@ -103,6 +103,20 @@ def run_bci_sim(npz_file, model_dir=None):
 
     print("  Starting MuJoCo simulation (G1 humanoid)...")
     ctrl.start()
+
+    # Configure camera: zoomed out, slightly above and in front
+    viewer = ctrl._backend._viewer
+    if viewer is not None:
+        viewer.cam.distance = 5.0       # far enough to see full body
+        viewer.cam.azimuth = 180.0      # looking from in front of the robot
+        viewer.cam.elevation = -25.0    # slightly above
+        # Initial lookat at the robot's root body position
+        data = ctrl._backend._data
+        if data is not None:
+            viewer.cam.lookat[0] = float(data.qpos[0])
+            viewer.cam.lookat[1] = float(data.qpos[1])
+            viewer.cam.lookat[2] = 0.8  # roughly torso height
+
     print("  MuJoCo viewer launched. Decoding brain signals...")
 
     stop_event = threading.Event()
@@ -115,7 +129,14 @@ def run_bci_sim(npz_file, model_dir=None):
 
     try:
         while thread.is_alive():
-            time.sleep(0.1)
+            # Track the robot: update camera lookat to follow root body
+            data = ctrl._backend._data
+            vw = ctrl._backend._viewer
+            if data is not None and vw is not None and vw.is_running():
+                vw.cam.lookat[0] = float(data.qpos[0])
+                vw.cam.lookat[1] = float(data.qpos[1])
+                vw.cam.lookat[2] = 0.8
+            time.sleep(0.05)
     except KeyboardInterrupt:
         print("\n  Interrupted by user.")
         stop_event.set()
@@ -166,7 +187,7 @@ def run_fallback_demo(npz_file, model_dir=None):
     label_info = arr["label"].item()
     gt_label = label_info["label"]
 
-    for action_str, confidence, latency_ms in pipeline.process_file(npz_file):
+    for action_str, confidence, latency_ms, phase in pipeline.process_file(npz_file):
         if action_str == "FORWARD":
             x += speed * np.cos(np.radians(heading))
             y += speed * np.sin(np.radians(heading))
@@ -229,8 +250,8 @@ def run_headless_demo(npz_file, model_dir=None):
     print(f"  Subject: {label_info['subject_id']}")
     print(f"  Duration: {label_info['duration']:.1f}s\n")
 
-    for action, conf, lat in pipeline.process_file(npz_file):
-        print(f"    Action: {action:8s}  Confidence: {conf:.2f}  Latency: {lat:.1f}ms")
+    for action, conf, lat, phase in pipeline.process_file(npz_file):
+        print(f"    Action: {action:8s} [{phase:10s}]  Confidence: {conf:.2f}  Latency: {lat:.1f}ms")
 
     metrics = pipeline.get_metrics()
     return metrics

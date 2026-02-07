@@ -23,8 +23,8 @@ class ThoughtLinkPipeline:
         pipeline = ThoughtLinkPipeline()
         pipeline.load_models("models/stage1_binary.pkl", "models/stage2_direction.pkl")
 
-        for action, confidence, latency_ms in pipeline.process_file("data/0b2dbd41-10.npz"):
-            print(f"Action: {action}, Confidence: {confidence:.2f}, Latency: {latency_ms:.1f}ms")
+        for action, confidence, latency_ms, phase in pipeline.process_file("data/0b2dbd41-10.npz"):
+            print(f"Action: {action} [{phase}], Confidence: {confidence:.2f}, Latency: {latency_ms:.1f}ms")
     """
 
     # Direction classifier output index -> Robot Action string
@@ -64,6 +64,8 @@ class ThoughtLinkPipeline:
         self.latencies = []
         self.predictions = []
         self.confidences = []
+        self.phases = []
+        self._prev_action = "STOP"
 
     def load_models(self, stage1_path, stage2_path):
         self.stage1_model = joblib.load(str(stage1_path))
@@ -93,7 +95,8 @@ class ThoughtLinkPipeline:
 
     def process_file(self, npz_path):
         """
-        Generator: yields (action_str, confidence, latency_ms) for each window.
+        Generator: yields (action_str, confidence, latency_ms, phase) for each window.
+        Phase is one of "INITIATION", "SUSTAINED", or "RELEASE".
         """
         arr = np.load(str(npz_path), allow_pickle=True)
         eeg_raw = arr["feature_eeg"]
@@ -124,6 +127,7 @@ class ThoughtLinkPipeline:
         # Reset smoothing state for each file
         self.smoother.reset()
         self.hysteresis.reset()
+        self._prev_action = "STOP"
 
         for window in windows:
             t_start = time.perf_counter()
@@ -164,11 +168,21 @@ class ThoughtLinkPipeline:
 
             confidence = s2_proba if s1_pred == 1 else (1.0 - s1_active_prob)
 
+            # Phase detection
+            if self._prev_action == "STOP" and final_action != "STOP":
+                phase = "INITIATION"
+            elif self._prev_action != "STOP" and final_action == "STOP":
+                phase = "RELEASE"
+            else:
+                phase = "SUSTAINED"
+            self._prev_action = final_action
+
             self.latencies.append(latency_ms)
             self.predictions.append(final_action)
             self.confidences.append(confidence)
+            self.phases.append(phase)
 
-            yield final_action, confidence, latency_ms
+            yield final_action, confidence, latency_ms, phase
 
     def get_metrics(self):
         return {
@@ -177,6 +191,7 @@ class ThoughtLinkPipeline:
             "predictions_count": len(self.predictions),
             "action_distribution": dict(Counter(self.predictions)),
             "avg_confidence": float(np.mean(self.confidences)) if self.confidences else 0,
+            "phase_distribution": dict(Counter(self.phases)) if self.phases else {},
         }
 
 
@@ -200,7 +215,7 @@ def run_pipeline_test():
         gt_label = label_info["label"]
 
         actions = []
-        for action, conf, lat in pipeline.process_file(str(fpath)):
+        for action, conf, lat, phase in pipeline.process_file(str(fpath)):
             actions.append(action)
 
         action_dist = Counter(actions)

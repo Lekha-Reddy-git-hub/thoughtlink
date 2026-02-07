@@ -60,8 +60,8 @@ def main():
                 os.path.join(project_root, "models", "stage1_binary.pkl"),
                 os.path.join(project_root, "models", "stage2_direction.pkl"),
             )
-            for action, conf, lat in pipeline.process_file(npz_file):
-                print(f"    Action: {action:8s}  Confidence: {conf:.2f}  Latency: {lat:.1f}ms")
+            for action, conf, lat, phase in pipeline.process_file(npz_file):
+                print(f"    Action: {action:8s} [{phase:10s}]  Confidence: {conf:.2f}  Latency: {lat:.1f}ms")
             metrics = pipeline.get_metrics()
 
     print("\n" + "=" * 60)
