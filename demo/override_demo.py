@@ -129,8 +129,8 @@ def main():
     decoded_lats = []
 
     for action_str, conf, lat, phase in pipeline.process_file(LEFT_FIST_FILE):
-        bri_action = {"FORWARD": Action.FORWARD, "LEFT": Action.LEFT,
-                      "RIGHT": Action.RIGHT, "STOP": Action.STOP}[action_str]
+        bri_action = {"FORWARD": Action.FORWARD, "BACKWARD": Action.BACKWARD,
+                      "LEFT": Action.LEFT, "RIGHT": Action.RIGHT, "STOP": Action.STOP}[action_str]
         ctrl.set_action(bri_action)
         decoded_actions.append(action_str)
         decoded_confs.append(conf)
@@ -177,8 +177,8 @@ def main():
 
     relax_actions = []
     for action_str, conf, lat, phase in pipeline2.process_file(RELAX_FILE):
-        bri_action = {"FORWARD": Action.FORWARD, "LEFT": Action.LEFT,
-                      "RIGHT": Action.RIGHT, "STOP": Action.STOP}[action_str]
+        bri_action = {"FORWARD": Action.FORWARD, "BACKWARD": Action.BACKWARD,
+                      "LEFT": Action.LEFT, "RIGHT": Action.RIGHT, "STOP": Action.STOP}[action_str]
         ctrl.set_action(bri_action)
         relax_actions.append(action_str)
         # Fast-forward (no real-time pacing for the check)

@@ -28,11 +28,12 @@ class ThoughtLinkPipeline:
     """
 
     # Direction classifier output index -> Robot Action string
-    # For 3-class (Both Fists=0, Left Fist=1, Right Fist=2):
+    # 4-class (Both Fists=0, Left Fist=1, Right Fist=2, Tongue Tapping=3):
     DIRECTION_TO_ACTION = {
-        0: "FORWARD",   # "Both Fists" -> go forward
-        1: "LEFT",      # "Left Fist"  -> turn left
-        2: "RIGHT",     # "Right Fist" -> turn right
+        0: "FORWARD",    # "Both Fists"      -> go forward
+        1: "LEFT",       # "Left Fist"       -> turn left
+        2: "RIGHT",      # "Right Fist"      -> turn right
+        3: "BACKWARD",   # "Tongue Tapping"  -> go backward
     }
 
     def __init__(
@@ -87,7 +88,7 @@ class ThoughtLinkPipeline:
                 elif "Right" in label:
                     action_map[idx] = "RIGHT"
                 elif "Tongue" in label:
-                    action_map[idx] = "FORWARD"
+                    action_map[idx] = "BACKWARD"
                 else:
                     action_map[idx] = "STOP"
             self.DIRECTION_TO_ACTION = action_map

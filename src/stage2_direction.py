@@ -107,62 +107,12 @@ def train_stage2():
         test_results[name] = (acc, model, y_pred)
         print(f"  {name}: {acc:.3f}")
 
-    best_name_4c = max(test_results, key=lambda k: test_results[k][0])
-    best_acc_4c = test_results[best_name_4c][0]
-
-    # Check if we need fallback to 3-class
-    use_3class = False
-    if best_acc_4c < 0.35:
-        print(f"\n4-class accuracy ({best_acc_4c:.3f}) < 0.35. Trying 3-class fallback...")
-        use_3class = True
-
-    if use_3class:
-        # Merge Tongue Tapping into Both Fists (both -> FORWARD)
-        LABEL_MAP_3CLASS = {}
-        new_class_names = []
-        for label in unique_active_labels:
-            if label == "Tongue Tapping":
-                LABEL_MAP_3CLASS[label] = LABEL_MAP_DIRECTION["Both Fists"]
-            else:
-                LABEL_MAP_3CLASS[label] = len(new_class_names)
-                new_class_names.append(label)
-
-        # Actually let's rebuild cleanly
-        class_names_3c = ["Both Fists", "Left Fist", "Right Fist"]
-        LABEL_MAP_3C = {"Both Fists": 0, "Left Fist": 1, "Right Fist": 2, "Tongue Tapping": 0}
-        y_train_3c = np.array([LABEL_MAP_3C[y_active_str[train_mask][i]] for i in range(len(y_train))])
-        y_test_3c = np.array([LABEL_MAP_3C[y_active_str[test_mask][i]] for i in range(len(y_test))])
-
-        print("\n--- 3-class Fallback ---")
-        test_results_3c = {}
-        for name in models:
-            model = models[name]
-            model.fit(X_train, y_train_3c)
-            y_pred = model.predict(X_test)
-            acc = accuracy_score(y_test_3c, y_pred)
-            test_results_3c[name] = (acc, model, y_pred)
-            print(f"  {name}: {acc:.3f}")
-
-        best_name = max(test_results_3c, key=lambda k: test_results_3c[k][0])
-        best_acc, best_model, best_pred = test_results_3c[best_name]
-        y_test_final = y_test_3c
-        class_names = class_names_3c
-
-        # Update label map
-        np.savez(
-            str(PROJECT_ROOT / "direction_label_map.npz"),
-            labels=np.array(class_names),
-            indices=np.array(list(range(len(class_names)))),
-            merged="Tongue Tapping -> Both Fists",
-        )
-    else:
-        best_name = best_name_4c
-        best_acc, best_model, best_pred = test_results[best_name]
-        y_test_final = y_test
+    best_name = max(test_results, key=lambda k: test_results[k][0])
+    best_acc, best_model, best_pred = test_results[best_name]
+    y_test_final = y_test
 
     print(f"\nBest model: {best_name} (accuracy: {best_acc:.3f})")
-    if use_3class:
-        print(f"  (3-class fallback used: Tongue Tapping merged into Both Fists)")
+    print(f"  4-class: Both Fists->FORWARD, Left Fist->LEFT, Right Fist->RIGHT, Tongue Tapping->BACKWARD")
 
     # Save model
     model_path = MODELS_DIR / "stage2_direction.pkl"
@@ -176,7 +126,7 @@ def train_stage2():
     with open(str(RESULTS_DIR / "stage2_report.txt"), "w") as f:
         f.write(f"Stage 2 Direction Classifier: {best_name}\n")
         f.write(f"Classes: {class_names}\n")
-        f.write(f"{'3-class fallback used' if use_3class else '4-class'}\n")
+        f.write(f"4-class: Both Fists->FORWARD, Left Fist->LEFT, Right Fist->RIGHT, Tongue Tapping->BACKWARD\n")
         f.write(f"Test Accuracy: {best_acc:.3f}\n\n")
         f.write(f"Cross-validation (4-class):\n")
         for name, scores in cv_results.items():
@@ -188,7 +138,7 @@ def train_stage2():
     fig, ax = plt.subplots(figsize=(7, 6))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=class_names, yticklabels=class_names, ax=ax)
-    ax.set_title(f"Stage 2: {best_name} ({'3-class' if use_3class else '4-class'}, Acc: {best_acc:.3f})")
+    ax.set_title(f"Stage 2: {best_name} (4-class, Acc: {best_acc:.3f})")
     ax.set_xlabel("Predicted")
     ax.set_ylabel("True")
     plt.tight_layout()

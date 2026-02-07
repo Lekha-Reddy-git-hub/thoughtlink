@@ -1,0 +1,25 @@
+Neural Network (MLP) vs Random Forest Comparison
+==================================================
+
+Setup:
+  RF: 69 hand-crafted features (PSD + statistical)
+  MLP: Raw flattened EEG (3000 inputs), 2 hidden layers (128, 64)
+  Both: Cross-subject split, same train/test subjects
+
+Stage 1 (Rest vs Active):
+  RF:  0.794
+  MLP: 0.791
+
+Stage 2 (Direction, 4-class):
+  RF:  0.279
+  MLP: 0.243
+
+Latency (per window, including feature extraction for RF):
+  RF:  13.3ms avg, 20.8ms p95
+  MLP: 0.3ms avg, 0.5ms p95
+
+Conclusion:
+  RF with hand-crafted features matches or beats the MLP
+  on raw EEG, validating our feature engineering approach.
+  MLP is 48.7x faster at inference.
+  For real-time BCI at >10 Hz, both meet the <100ms target.

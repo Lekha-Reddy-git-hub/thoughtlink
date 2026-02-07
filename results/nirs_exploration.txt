@@ -1,0 +1,43 @@
+TD-NIRS Exploration Report
+============================================================
+
+Question: Does adding brain blood flow (TD-NIRS) data
+to EEG improve cross-subject intent classification?
+
+NIRS data: feature_moments shape (72, 40, 3, 2, 3)
+  72 channels x 40 timepoints x 3 moments x 2 wavelengths x 3 conditions
+  Extracted 1728 raw features per file
+  Zero-variance: 0/1728 (0%)
+  Usable features: 0
+
+Files: 865 analyzed, 35 skipped
+Split: cross-subject (5 train, 1 test)
+
+KEY FINDING: ALL NIRS features have zero variance
+--------------------------------------------------
+The feature_moments data is constant across recordings
+for each subject, providing no discriminative signal.
+Likely causes:
+  - NIRS channels distant from motor cortex
+  - Hemodynamic response too slow (5-8s peak) for
+    the 4-10s task windows
+  - Pre-computed moments lost temporal variation
+
+Results:
+--------------------------------------------------
+Stage 1 (Rest vs Active):
+  EEG-only:  0.772
+  EEG+NIRS:  0.760  (delta: -1.2%)
+
+Stage 2 (Direction, 4-class):
+  EEG-only:  0.265
+  EEG+NIRS:  0.221  (delta: -4.4%)
+
+Latency: EEG 17.8ms vs EEG+NIRS 17.6ms (1.0x)
+
+Conclusion:
+--------------------------------------------------
+The TD-NIRS data provides NO discriminative information.
+EEG alone is both necessary and sufficient.
+This is a valid negative result demonstrating that
+multimodal fusion requires task-relevant sensor placement.

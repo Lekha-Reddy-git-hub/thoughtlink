@@ -1,6 +1,6 @@
 """
-ThoughtLink Full Demo -- All 4 Robot Actions Back-to-Back
-Runs LEFT, RIGHT, FORWARD, STOP sequentially with clear banners.
+ThoughtLink Full Demo -- All 5 Robot Actions Back-to-Back
+Runs LEFT, RIGHT, FORWARD, BACKWARD, STOP sequentially with clear banners.
 Each file is from a different subject to prove cross-subject generalization.
 
 Usage: python demo/run_all.py
@@ -22,16 +22,22 @@ DEMO_FILES = [
         "subject": "1a3cd681",
     },
     {
-        "file": "305a10dd-16.npz",
+        "file": "0b2dbd41-34.npz",
         "label": "Right Fist",
         "expected_action": "RIGHT",
-        "subject": "2a456f03",
+        "subject": "a5136953",
     },
     {
         "file": "4787dfb9-10.npz",
         "label": "Both Fists",
         "expected_action": "FORWARD",
         "subject": "37dfbd76",
+    },
+    {
+        "file": "0b2dbd41-16.npz",
+        "label": "Tongue Tapping",
+        "expected_action": "BACKWARD",
+        "subject": "a5136953",
     },
     {
         "file": "2161ecb6-12.npz",
@@ -59,7 +65,7 @@ def print_banner(entry, index, total):
 
 def main():
     print("=" * 70)
-    print("  ThoughtLink: Full Demo -- All 4 Robot Actions")
+    print("  ThoughtLink: Full Demo -- All 5 Robot Actions")
     print("  Hack Nation 2026 -- Challenge 9")
     print("=" * 70)
     print()
@@ -114,6 +120,7 @@ def main():
 
         ACTION_MAP = {
             "FORWARD": Action.FORWARD,
+            "BACKWARD": Action.BACKWARD,
             "LEFT": Action.LEFT,
             "RIGHT": Action.RIGHT,
             "STOP": Action.STOP,

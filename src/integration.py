@@ -34,6 +34,7 @@ def _get_action_map():
     Action, _ = _import_bri()
     ACTION_STR_MAP = {
         "FORWARD": Action.FORWARD,
+        "BACKWARD": Action.BACKWARD,
         "LEFT": Action.LEFT,
         "RIGHT": Action.RIGHT,
         "STOP": Action.STOP,
@@ -191,6 +192,9 @@ def run_fallback_demo(npz_file, model_dir=None):
         if action_str == "FORWARD":
             x += speed * np.cos(np.radians(heading))
             y += speed * np.sin(np.radians(heading))
+        elif action_str == "BACKWARD":
+            x -= speed * np.cos(np.radians(heading))
+            y -= speed * np.sin(np.radians(heading))
         elif action_str == "LEFT":
             heading += turn_rate
         elif action_str == "RIGHT":

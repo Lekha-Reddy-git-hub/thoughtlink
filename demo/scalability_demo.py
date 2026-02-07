@@ -44,8 +44,8 @@ ROBOT_FLEET = [
     ("5aa5d730-16.npz", "Both Fists",      "d696086d", "FORWARD"),
     ("2562e7bd-20.npz", "Relax",           "1a3cd681", "STOP"),
     ("305a10dd-10.npz", "Relax",           "2a456f03", "STOP"),
-    ("4787dfb9-14.npz", "Tongue Tapping",  "37dfbd76", "FORWARD"),
-    ("2161ecb6-10.npz", "Tongue Tapping",  "4c2ea012", "FORWARD"),
+    ("4787dfb9-14.npz", "Tongue Tapping",  "37dfbd76", "BACKWARD"),
+    ("2161ecb6-10.npz", "Tongue Tapping",  "4c2ea012", "BACKWARD"),
 ]
 
 N_ROUNDS = 5
@@ -100,7 +100,7 @@ def main():
     print("  Loading models...", end="", flush=True)
     stage1 = joblib.load(os.path.join(model_dir, "stage1_binary.pkl"))
     stage2 = joblib.load(os.path.join(model_dir, "stage2_direction.pkl"))
-    DIRECTION_TO_ACTION = {0: "FORWARD", 1: "LEFT", 2: "RIGHT"}
+    DIRECTION_TO_ACTION = {0: "FORWARD", 1: "LEFT", 2: "RIGHT", 3: "BACKWARD"}
     print(" done")
 
     # -- prepare one window per robot (not timed) --------------------------
