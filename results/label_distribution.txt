@@ -1,0 +1,10 @@
+Total files: 900
+
+Label distribution:
+  Both Fists: 180
+  Left Fist: 180
+  Relax: 180
+  Right Fist: 180
+  Tongue Tapping: 180
+
+Bad files: 0
