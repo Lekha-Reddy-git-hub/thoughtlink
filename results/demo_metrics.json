@@ -1,0 +1,10 @@
+{
+  "avg_latency_ms": 145.63949998027007,
+  "max_latency_ms": 297.5045000202954,
+  "predictions_count": 19,
+  "action_distribution": {
+    "STOP": 2,
+    "LEFT": 17
+  },
+  "avg_confidence": 0.7276315789473685
+}
