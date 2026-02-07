@@ -1,0 +1,28 @@
+Stage 1 Binary Classifier: RandomForest
+Test Accuracy: 0.794
+
+Train subjects: [np.str_('1a3cd681'), np.str_('2a456f03'), np.str_('37dfbd76'), np.str_('4c2ea012'), np.str_('a5136953')]
+Test subjects: [np.str_('d696086d')]
+
+Cross-validation results:
+  SVM_RBF: 0.566 +/- 0.055
+  RandomForest: 0.805 +/- 0.007
+  GradientBoosting: 0.797 +/- 0.011
+
+Test set results:
+  SVM_RBF: 0.511
+  RandomForest: 0.794
+  GradientBoosting: 0.793
+
+Best: RandomForest
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        Rest       0.00      0.00      0.00       653
+      Active       0.79      1.00      0.89      2523
+
+    accuracy                           0.79      3176
+   macro avg       0.40      0.50      0.44      3176
+weighted avg       0.63      0.79      0.70      3176
+
