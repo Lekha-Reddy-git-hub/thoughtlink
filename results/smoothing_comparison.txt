@@ -1,0 +1,15 @@
+Smoothing Effectiveness Comparison
+========================================
+
+  raw_switches: 56
+  smoothed_switches: 4
+  flicker_reduction_pct: 92.857
+  raw_accuracy: 0.650
+  smoothed_accuracy: 0.790
+  raw_switches_per_sec: 1.120
+  smoothed_switches_per_sec: 0.080
+
+Parameters:
+  MajorityVote window_size: 5
+  Hysteresis min_consecutive: 3
+  Test: 100 steps, 40% noise rate
