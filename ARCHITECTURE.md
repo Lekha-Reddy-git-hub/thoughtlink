@@ -112,37 +112,58 @@ The 6 EEG channels are:
 
 ### 12. Scalability: Hierarchical Group Command Architecture
 
-Scaling from 1 robot to 100+ requires more than a fast decoder. We designed a three-layer command dispatch architecture:
+Scaling from 1 robot to 100+ requires more than a fast decoder. We designed a three-layer command dispatch architecture for the 100-robot fleet (10 groups of 10):
 
 ```
-Layer 3: OPERATOR INTENT
-  One human, one BCI decode per decision cycle (~31ms)
+Layer 1: HUMAN INTENT (BCI Pipeline)
+  One human, one BCI decode per decision cycle (~26ms)
   Output: a single action (FORWARD / LEFT / RIGHT / BACKWARD / STOP)
+  Or: a trigger signal for context-aware dispatch
 
-Layer 2: GROUP DISPATCHER
-  Maps one intent to N robot groups
-  Strategies:
-    - Broadcast: all robots receive the same command (emergency stop)
-    - Round-robin: each stuck robot gets one override, then moves to next
-    - Priority queue: most-stuck robot gets the override first
+Layer 2: GROUP ROUTER
+  100 robots organized into 10 groups (G1-G10)
+  Operator targets a group; system identifies stuck robots within it
+  Command types:
+    - Individual override: one action → one robot
+    - Group direction: one action → all stuck robots in group
+    - Group fix: one trigger → context-aware individualized actions
+    - Fix all: one trigger → all stuck robots fleet-wide
 
-Layer 3: INDIVIDUAL CONTROLLER
-  Each robot has its own BRI Controller instance
-  Translates high-level action to low-level joint commands
-  Runs independently at its own control frequency (50-200 Hz)
+Layer 3: CONTEXT AI (Per-Robot Diagnosis)
+  Each stuck robot has a diagnosed failure reason
+  System maps failure → corrective action automatically:
+    - obstacle_left  → RIGHT
+    - obstacle_right → LEFT
+    - lost_target    → FORWARD
+    - failed_task    → BACKWARD
+    - unknown        → STOP
+  Human provides strategic oversight; system handles tactical execution
 ```
+
+**Three command layers in the demo:**
+
+| Layer | Command Example | Robots Affected | Actions Sent |
+|-------|----------------|-----------------|--------------|
+| Layer 1 | Click "LEFT FIST" button | 1 stuck robot | 1 identical action |
+| Layer 2 | `group 3 left` | All stuck in G3 | N identical actions |
+| Layer 3 | `group 3 fix` / `fix all` | All stuck in G3 / fleet | N individualized actions |
+
+**Context-aware individualization (Layer 3):** When the operator sends `group 3 fix`, the system doesn't send the same action to every robot. It diagnoses each robot's failure reason and prescribes the correct corrective action. Robot #22 has an obstacle on its left → gets RIGHT. Robot #25 lost its target → gets FORWARD. One command, multiple robots, each getting the right fix.
+
+**Efficiency tracking:** The demo tracks operator leverage = total robots overridden / total commands issued. With Layer 3 commands, a single `fix all` can resolve 8+ robots simultaneously, yielding 8x+ leverage.
 
 **Impact on operator efficiency:**
 
 | Dispatch Strategy | Robots/Operator | Use Case |
 |-------------------|----------------|----------|
-| Broadcast         | Unlimited      | Emergency stop, formation commands |
-| Round-robin       | 10-50          | Routine stuck-robot recovery |
-| Priority queue    | 50-100+        | Large fleet with heterogeneous failures |
+| Individual (Layer 1) | 1 | Precise single-robot control |
+| Group direction (Layer 2) | 10-50 | Uniform group corrections |
+| Context-aware fix (Layer 3) | 50-100+ | Heterogeneous failures, max leverage |
+| Fix all (Layer 3) | Unlimited | Fleet-wide recovery |
 
-**Why this scales linearly:** The BCI decoder runs once per decision cycle regardless of fleet size. The group dispatcher is O(N) in the number of robots but operates on pre-decoded intent — no additional EEG processing. At 31ms decode latency, a single pipeline instance can make ~32 decisions/second, enough to cycle through 100 robots at 0.3 Hz per robot or 10 robots at 3 Hz.
+**Why this scales linearly:** The BCI decoder runs once per decision cycle regardless of fleet size. The group router is O(N) in the number of robots but operates on pre-decoded intent — no additional EEG processing. At 26ms per robot, a single pipeline instance processes ~40 robots/second. An 8-core machine handles 300+ robots at 1 Hz.
 
-**Current demo implementation:** `demo/scalability_demo.py` tests 10/50/100 robot fleets with sequential decode. `demo/full_demo.py` demonstrates the priority-queue strategy: 10 robots run autonomously, the operator overrides the one that gets stuck.
+**Current demo implementation:** `demo/full_demo.py` runs 100 robots in 10 groups with all three command layers. `demo/scalability_demo.py` benchmarks 10/50/100 robot fleets with sequential decode timing.
 
 ## Limitations
 
