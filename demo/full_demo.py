@@ -32,6 +32,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
 from collections import Counter
 
 from pipeline import ThoughtLinkPipeline
@@ -90,7 +91,14 @@ CHAT_COMMANDS = [
 
 DATA_DIR = os.path.join(project_root, "data")
 MODEL_DIR = os.path.join(project_root, "models")
+RESULTS_DIR = os.path.join(project_root, "results")
 FONT = "Segoe UI"
+
+EVIDENCE_CHARTS = {
+    "1": ("latency_accuracy_tradeoff.png", "Latency vs Accuracy: 4 Model Comparison"),
+    "2": ("scalability_100.png",           "Fleet Scalability: 10 to 100 Robots"),
+    "3": ("failure_analysis.png",          "Failure Mode Analysis"),
+}
 
 # =====================================================================
 #  LOAD PIPELINE MODELS (once, shared across requests)
@@ -505,7 +513,7 @@ class ControlPanel:
         self._eeg_canvas.draw()
 
         tk.Label(frame,
-                 text="2-stage RF classifier | Kernel Flow 6ch EEG | 4-class direction + rest",
+                 text="Keys: A=Auto-play | Q=Quit | 1=Latency Tradeoffs | 2=Scalability | 3=Failure Analysis",
                  font=(FONT, 9), fg=DIM, bg=BG2).pack(pady=(2, 5))
 
     # -----------------------------------------------------------------
@@ -604,11 +612,28 @@ class ControlPanel:
         """Global key handler (ignored when typing in chat)."""
         if isinstance(self.root.focus_get(), tk.Entry):
             return
-        ch = event.char.lower()
+        ch = event.char.lower() if event.char else ""
         if ch == "a":
             self._toggle_autoplay()
         elif ch == "q":
             self._quit()
+        elif ch in EVIDENCE_CHARTS:
+            self._show_evidence_chart(ch)
+
+    def _show_evidence_chart(self, key):
+        """Open a matplotlib window showing a bonus evidence chart."""
+        fname, title = EVIDENCE_CHARTS[key]
+        path = os.path.join(RESULTS_DIR, fname)
+        if not os.path.exists(path):
+            print(f"  Chart not found: {path}")
+            return
+        img = plt.imread(path)
+        fig, ax = plt.subplots(figsize=(10, 7))
+        ax.imshow(img)
+        ax.set_axis_off()
+        fig.suptitle(title, fontsize=14, fontweight="bold")
+        fig.tight_layout()
+        plt.show(block=False)
 
     def _on_signal(self, label):
         """Brain signal button clicked."""
