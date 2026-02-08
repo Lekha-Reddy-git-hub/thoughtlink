@@ -534,15 +534,19 @@ class ControlPanel:
             btn.pack(side=tk.LEFT, padx=4)
 
     def _build_chat(self, parent):
-        """SECTION 5: Chat input."""
+        """SECTION 5: Decoded result + chat input."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=60)
+                         height=75)
         frame.pack(fill=tk.X, padx=8, pady=2)
         frame.pack_propagate(False)
 
+        self._chat_result = tk.Label(
+            frame, text="", font=(FONT, 9, "bold"), fg=DIM, bg=BG2, anchor="w")
+        self._chat_result.pack(fill=tk.X, padx=10, pady=(5, 5))
+
         row = tk.Frame(frame, bg=BG2)
-        row.pack(fill=tk.X, padx=10, pady=(6, 2))
+        row.pack(fill=tk.X, padx=10, pady=(0, 4))
 
         self._chat = tk.Entry(
             row, font=(FONT, 11), bg="#21262d", fg=DIM,
@@ -558,10 +562,6 @@ class ControlPanel:
                   bg=BLUE, fg="white", relief=tk.FLAT, padx=12,
                   cursor="hand2",
                   command=self._on_chat_submit).pack(side=tk.LEFT, padx=(8, 0))
-
-        self._chat_result = tk.Label(
-            frame, text="", font=(FONT, 9), fg=DIM, bg=BG2, anchor="w")
-        self._chat_result.pack(fill=tk.X, padx=10)
 
     def _build_eeg(self, parent):
         """SECTION 6: EEG preview + key hints."""
