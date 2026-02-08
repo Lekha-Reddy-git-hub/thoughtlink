@@ -508,15 +508,15 @@ class ControlPanel:
         self._m_eff.pack(side=tk.LEFT)
 
     def _build_controls(self, parent):
-        """SECTION 4: Brain signal buttons."""
+        """SECTION 4: Brain signal buttons + evidence chart buttons."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=70)
+                         height=90)
         frame.pack(fill=tk.X, padx=8, pady=2)
         frame.pack_propagate(False)
 
         btn_row = tk.Frame(frame, bg=BG2)
-        btn_row.pack(expand=True)
+        btn_row.pack(pady=(6, 2))
 
         buttons = [
             ("LEFT FIST",  "Left Fist",      BLUE,   "white"),
@@ -532,6 +532,23 @@ class ControlPanel:
                 relief=tk.FLAT, padx=12, pady=8, cursor="hand2",
                 command=lambda l=label: self._on_signal(l))
             btn.pack(side=tk.LEFT, padx=4)
+
+        chart_row = tk.Frame(frame, bg=BG2)
+        chart_row.pack(pady=(0, 4))
+
+        charts = [
+            ("Latency Chart", "1"),
+            ("Scale Chart",   "2"),
+            ("Failure Chart", "3"),
+        ]
+        for text, key in charts:
+            btn = tk.Button(
+                chart_row, text=text, font=(FONT, 8),
+                bg=BORDER, fg=DIM, activebackground="#444",
+                activeforeground=TEXT, relief=tk.FLAT, padx=8, pady=2,
+                cursor="hand2",
+                command=lambda k=key: self._show_evidence_chart(k))
+            btn.pack(side=tk.LEFT, padx=3)
 
     def _build_chat(self, parent):
         """SECTION 5: Decoded result + chat input."""
