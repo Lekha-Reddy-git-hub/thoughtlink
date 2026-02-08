@@ -3,8 +3,6 @@ import os
 import numpy as np
 from pathlib import Path
 from scipy.signal import butter, filtfilt, welch
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
