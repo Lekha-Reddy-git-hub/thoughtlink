@@ -367,7 +367,9 @@ class ControlPanel:
         main.pack(fill=tk.BOTH, expand=True)
 
         tk.Label(main, text="ThoughtLink: 100-Robot Fleet Orchestration",
-                 font=(FONT, 14, "bold"), fg=TEXT, bg=BG).pack(pady=(5, 2))
+                 font=(FONT, 14, "bold"), fg=TEXT, bg=BG).pack(pady=(5, 0))
+        tk.Label(main, text="Left: Close-up of active override | Right: Fleet operations",
+                 font=(FONT, 9), fg=DIM, bg=BG).pack(pady=(0, 2))
 
         self._build_fleet(main)
         self._build_override(main)
@@ -431,7 +433,12 @@ class ControlPanel:
         self._ov_detail = tk.Label(
             frame, text="", font=("Consolas", 9), fg=DIM, bg=BG2,
             justify="left", anchor="w")
-        self._ov_detail.pack(fill=tk.X, padx=15, pady=(0, 8))
+        self._ov_detail.pack(fill=tk.X, padx=15, pady=(0, 4))
+
+        self._mujoco_label = tk.Label(
+            frame, text="MuJoCo view: Fleet patrol (autonomous)",
+            font=(FONT, 9), fg=DIM, bg=BG2)
+        self._mujoco_label.pack(pady=(0, 6))
 
     def _build_metrics(self, parent):
         """SECTION 3: Live metrics + efficiency counter."""
@@ -703,6 +710,8 @@ class ControlPanel:
         self._ov_status.config(text="ALL ROBOTS AUTONOMOUS", fg="#1a4d2e")
         self._ov_action.config(text="", fg=GRAY)
         self._ov_detail.config(text="")
+        self._mujoco_label.config(
+            text="MuJoCo view: Fleet patrol (autonomous)", fg=DIM)
 
     # -----------------------------------------------------------------
     #  EVENT HANDLERS
@@ -987,6 +996,9 @@ class ControlPanel:
             self.mujoco.set_action(action)
             self._current_mujoco_action = action
 
+        self._mujoco_label.config(
+            text=f"MuJoCo view: Robot #{target.id:02d} (close-up)", fg=TEXT)
+
         self._chat_result.config(
             text=f"Decoded: {label} \u2192 {action} ({lat:.0f}ms) "
                  f"\u2192 Robot #{target.id:02d}",
@@ -1031,6 +1043,9 @@ class ControlPanel:
         if self.mujoco:
             self.mujoco.set_action(action)
             self._current_mujoco_action = action
+
+        self._mujoco_label.config(
+            text=f"MuJoCo view: Robot #{stuck[-1].id:02d} (close-up)", fg=TEXT)
 
         self._chat_result.config(
             text=f"Group {group}: {label} \u2192 {action} "
@@ -1086,6 +1101,9 @@ class ControlPanel:
         if self.mujoco:
             self.mujoco.set_action(last_action)
             self._current_mujoco_action = last_action
+
+        self._mujoco_label.config(
+            text=f"MuJoCo view: Robot #{stuck[-1].id:02d} (close-up)", fg=TEXT)
 
         self._chat_result.config(
             text=f"Group {group} fix: 1 decode \u2192 "
@@ -1147,6 +1165,9 @@ class ControlPanel:
         if self.mujoco:
             self.mujoco.set_action(last_action)
             self._current_mujoco_action = last_action
+
+        self._mujoco_label.config(
+            text=f"MuJoCo view: Robot #{stuck[-1].id:02d} (close-up)", fg=TEXT)
 
         self._chat_result.config(
             text=f"Fleet fix: 1 decode \u2192 "
