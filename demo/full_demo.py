@@ -172,6 +172,7 @@ class FleetRobot:
         self.dir_timer = random.uniform(2, 4)
         self.flash_tick = 0
         self.override_timer = 0.0
+        self.stuck_timer = 0.0              # auto-recover after 15s stuck
         self.override_action = None
         self.failure_reason = None
 
@@ -193,6 +194,15 @@ class FleetRobot:
             self.dir_timer -= dt
             if self.dir_timer <= 0:
                 self.heading += random.uniform(-90, 90)
+                self.dir_timer = random.uniform(2, 4)
+
+        elif self.state == "stuck":
+            # Auto-recover after 15 seconds without override
+            self.stuck_timer += dt
+            if self.stuck_timer >= 15.0:
+                self.state = "autonomous"
+                self.failure_reason = None
+                self.stuck_timer = 0.0
                 self.dir_timer = random.uniform(2, 4)
 
         elif self.state == "override":
@@ -386,11 +396,11 @@ class ControlPanel:
 
         self.fleet_counter = tk.Label(
             frame, text="Fleet: 100 | Autonomous: 100 | Stuck: 0 | Groups affected: 0",
-            font=(FONT, 12, "bold"), fg=TEXT, bg=BG2)
-        self.fleet_counter.pack(pady=(4, 0))
+            font=(FONT, 10, "bold"), fg=TEXT, bg=BG2)
+        self.fleet_counter.pack(pady=(2, 0))
 
-        self.canvas = tk.Canvas(frame, bg=BG2, highlightthickness=0, height=300)
-        self.canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        self.canvas = tk.Canvas(frame, bg=BG2, highlightthickness=0, height=250)
+        self.canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=2)
 
         # Create canvas items for each robot
         self._ovals = []
@@ -411,98 +421,98 @@ class ControlPanel:
             self._group_labels.append(gl)
 
         tk.Label(frame, text="~33 robots/core at 1Hz | 10 groups x 10 robots",
-                 font=(FONT, 9), fg=DIM, bg=BG2).pack(pady=(0, 4))
+                 font=(FONT, 8), fg=DIM, bg=BG2).pack(pady=(0, 2))
 
     def _build_override(self, parent):
         """SECTION 2: Override status (supports multi-robot display)."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=220)
-        frame.pack(fill=tk.X, padx=8, pady=4)
+                         height=160)
+        frame.pack(fill=tk.X, padx=8, pady=2)
         frame.pack_propagate(False)
 
         self._ov_status = tk.Label(
             frame, text="ALL ROBOTS AUTONOMOUS",
-            font=(FONT, 16, "bold"), fg="#1a4d2e", bg=BG2)
-        self._ov_status.pack(pady=(8, 0))
+            font=(FONT, 13, "bold"), fg="#1a4d2e", bg=BG2)
+        self._ov_status.pack(pady=(4, 0))
 
         self._ov_action = tk.Label(
-            frame, text="", font=(FONT, 28, "bold"), fg=GRAY, bg=BG2)
+            frame, text="", font=(FONT, 22, "bold"), fg=GRAY, bg=BG2)
         self._ov_action.pack()
 
         self._ov_detail = tk.Label(
-            frame, text="", font=("Consolas", 9), fg=DIM, bg=BG2,
+            frame, text="", font=("Consolas", 8), fg=DIM, bg=BG2,
             justify="left", anchor="w")
-        self._ov_detail.pack(fill=tk.X, padx=15, pady=(0, 4))
+        self._ov_detail.pack(fill=tk.X, padx=12, pady=(0, 2))
 
         self._mujoco_label = tk.Label(
             frame, text="MuJoCo view: Fleet patrol (autonomous)",
-            font=(FONT, 9), fg=DIM, bg=BG2)
-        self._mujoco_label.pack(pady=(0, 6))
+            font=(FONT, 8), fg=DIM, bg=BG2)
+        self._mujoco_label.pack(pady=(0, 4))
 
     def _build_metrics(self, parent):
         """SECTION 3: Live metrics + efficiency counter."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=140)
-        frame.pack(fill=tk.X, padx=8, pady=4)
+                         height=110)
+        frame.pack(fill=tk.X, padx=8, pady=2)
         frame.pack_propagate(False)
 
         inner = tk.Frame(frame, bg=BG2)
-        inner.pack(fill=tk.X, padx=15, pady=8)
+        inner.pack(fill=tk.X, padx=12, pady=4)
 
         # Row 1: Latency + Confidence
         r1 = tk.Frame(inner, bg=BG2)
         r1.pack(fill=tk.X)
 
-        tk.Label(r1, text="Latency:", font=(FONT, 11), fg=DIM,
+        tk.Label(r1, text="Latency:", font=(FONT, 10), fg=DIM,
                  bg=BG2).pack(side=tk.LEFT)
-        self._m_lat = tk.Label(r1, text="--", font=(FONT, 20, "bold"),
+        self._m_lat = tk.Label(r1, text="--", font=(FONT, 16, "bold"),
                                fg=DIM, bg=BG2)
-        self._m_lat.pack(side=tk.LEFT, padx=(5, 30))
+        self._m_lat.pack(side=tk.LEFT, padx=(4, 20))
 
-        tk.Label(r1, text="Confidence:", font=(FONT, 11), fg=DIM,
+        tk.Label(r1, text="Confidence:", font=(FONT, 10), fg=DIM,
                  bg=BG2).pack(side=tk.LEFT)
-        self._m_conf = tk.Label(r1, text="--", font=(FONT, 20, "bold"),
+        self._m_conf = tk.Label(r1, text="--", font=(FONT, 16, "bold"),
                                 fg=DIM, bg=BG2)
-        self._m_conf.pack(side=tk.LEFT, padx=5)
+        self._m_conf.pack(side=tk.LEFT, padx=4)
 
-        self._conf_bar = tk.Canvas(r1, width=100, height=16, bg="#21262d",
+        self._conf_bar = tk.Canvas(r1, width=80, height=12, bg="#21262d",
                                     highlightthickness=0)
-        self._conf_bar.pack(side=tk.LEFT, padx=5)
+        self._conf_bar.pack(side=tk.LEFT, padx=4)
         self._conf_fill = self._conf_bar.create_rectangle(
-            0, 0, 0, 16, fill=GREEN, outline="")
+            0, 0, 0, 12, fill=GREEN, outline="")
 
         # Row 2: Pipeline + Windows
         r2 = tk.Frame(inner, bg=BG2)
-        r2.pack(fill=tk.X, pady=(5, 0))
+        r2.pack(fill=tk.X, pady=(3, 0))
 
-        tk.Label(r2, text="Pipeline:", font=(FONT, 11), fg=DIM,
+        tk.Label(r2, text="Pipeline:", font=(FONT, 10), fg=DIM,
                  bg=BG2).pack(side=tk.LEFT)
-        self._m_pipe = tk.Label(r2, text="--", font=(FONT, 11, "bold"),
+        self._m_pipe = tk.Label(r2, text="--", font=(FONT, 10, "bold"),
                                 fg=DIM, bg=BG2)
-        self._m_pipe.pack(side=tk.LEFT, padx=(5, 30))
+        self._m_pipe.pack(side=tk.LEFT, padx=(4, 20))
 
-        tk.Label(r2, text="Windows:", font=(FONT, 11), fg=DIM,
+        tk.Label(r2, text="Windows:", font=(FONT, 10), fg=DIM,
                  bg=BG2).pack(side=tk.LEFT)
-        self._m_win = tk.Label(r2, text="--", font=(FONT, 11, "bold"),
+        self._m_win = tk.Label(r2, text="--", font=(FONT, 10, "bold"),
                                fg=DIM, bg=BG2)
-        self._m_win.pack(side=tk.LEFT, padx=5)
+        self._m_win.pack(side=tk.LEFT, padx=4)
 
         # Row 3: Efficiency
         r3 = tk.Frame(inner, bg=BG2)
-        r3.pack(fill=tk.X, pady=(5, 0))
+        r3.pack(fill=tk.X, pady=(3, 0))
 
         self._m_eff = tk.Label(r3, text="Session: Awaiting first command...",
-                               font=(FONT, 10), fg=DIM, bg=BG2)
+                               font=(FONT, 9), fg=DIM, bg=BG2)
         self._m_eff.pack(side=tk.LEFT)
 
     def _build_controls(self, parent):
         """SECTION 4: Brain signal buttons."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=85)
-        frame.pack(fill=tk.X, padx=8, pady=4)
+                         height=70)
+        frame.pack(fill=tk.X, padx=8, pady=2)
         frame.pack_propagate(False)
 
         btn_row = tk.Frame(frame, bg=BG2)
@@ -527,12 +537,12 @@ class ControlPanel:
         """SECTION 5: Chat input."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=75)
-        frame.pack(fill=tk.X, padx=8, pady=4)
+                         height=60)
+        frame.pack(fill=tk.X, padx=8, pady=2)
         frame.pack_propagate(False)
 
         row = tk.Frame(frame, bg=BG2)
-        row.pack(fill=tk.X, padx=10, pady=(10, 2))
+        row.pack(fill=tk.X, padx=10, pady=(6, 2))
 
         self._chat = tk.Entry(
             row, font=(FONT, 11), bg="#21262d", fg=DIM,
@@ -557,11 +567,11 @@ class ControlPanel:
         """SECTION 6: EEG preview + key hints."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=130)
-        frame.pack(fill=tk.X, padx=8, pady=(4, 8))
+                         height=80)
+        frame.pack(fill=tk.X, padx=8, pady=(2, 4))
         frame.pack_propagate(False)
 
-        self._eeg_fig = Figure(figsize=(6, 1.0), dpi=85)
+        self._eeg_fig = Figure(figsize=(6, 0.6), dpi=80)
         self._eeg_fig.patch.set_facecolor(BG2)
         self._eeg_ax = self._eeg_fig.add_subplot(111)
         self._eeg_ax.set_facecolor(BG2)
@@ -571,12 +581,12 @@ class ControlPanel:
             spine.set_color(BORDER)
 
         self._eeg_canvas = FigureCanvasTkAgg(self._eeg_fig, master=frame)
-        self._eeg_canvas.get_tk_widget().pack(fill=tk.X, padx=10, pady=(5, 0))
+        self._eeg_canvas.get_tk_widget().pack(fill=tk.X, padx=8, pady=(2, 0))
         self._eeg_canvas.draw()
 
         tk.Label(frame,
                  text="Keys: A=Auto-play | Q=Quit | 1=Latency | 2=Scalability | 3=Failures",
-                 font=(FONT, 9), fg=DIM, bg=BG2).pack(pady=(2, 5))
+                 font=(FONT, 8), fg=DIM, bg=BG2).pack(pady=(1, 2))
 
     # -----------------------------------------------------------------
     #  FLEET ANIMATION (30 fps)
@@ -659,27 +669,34 @@ class ControlPanel:
         self.root.after(33, self._update_fleet)
 
     def _make_robots_stuck(self):
-        """Every 8 seconds, make 3-6 robots stuck across 2-3 groups."""
-        n_groups = random.randint(2, 3)
-        groups = random.sample(range(1, NUM_GROUPS + 1), min(n_groups, NUM_GROUPS))
+        """Every 8 seconds, make 2-4 robots stuck (only if below 8 total stuck)."""
+        current_stuck = sum(1 for r in self.robots if r.state == "stuck")
 
-        new_stuck = 0
-        for g in groups:
-            autonomous = [r for r in self.robots
-                          if r.group_id == g and r.state == "autonomous"]
-            if not autonomous:
-                continue
-            n = random.randint(1, min(3, len(autonomous)))
-            for robot in random.sample(autonomous, n):
-                robot.state = "stuck"
-                robot.flash_tick = 0
-                robot.failure_reason = random.choice(FAILURE_REASONS)
-                new_stuck += 1
+        if current_stuck < 8:
+            budget = min(random.randint(2, 4), 8 - current_stuck)
+            n_groups = random.randint(1, 2)
+            groups = random.sample(range(1, NUM_GROUPS + 1), min(n_groups, NUM_GROUPS))
 
-        if new_stuck > 0:
-            any_override = any(r.state == "override" for r in self.robots)
-            if not any_override:
-                self._update_stuck_display()
+            new_stuck = 0
+            for g in groups:
+                if new_stuck >= budget:
+                    break
+                autonomous = [r for r in self.robots
+                              if r.group_id == g and r.state == "autonomous"]
+                if not autonomous:
+                    continue
+                n = min(random.randint(1, 2), len(autonomous), budget - new_stuck)
+                for robot in random.sample(autonomous, n):
+                    robot.state = "stuck"
+                    robot.flash_tick = 0
+                    robot.stuck_timer = 0.0
+                    robot.failure_reason = random.choice(FAILURE_REASONS)
+                    new_stuck += 1
+
+            if new_stuck > 0:
+                any_override = any(r.state == "override" for r in self.robots)
+                if not any_override:
+                    self._update_stuck_display()
 
         self.root.after(8000, self._make_robots_stuck)
 
@@ -699,11 +716,11 @@ class ControlPanel:
         self._ov_action.config(text="", fg=GRAY)
 
         lines = []
-        for r in stuck[:8]:
+        for r in stuck[:5]:
             lines.append(f"R{r.id:02d}: {r.failure_reason}")
-        if len(stuck) > 8:
-            lines.append(f"...and {len(stuck) - 8} more")
-        sep = "  |  " if len(stuck) <= 4 else "\n"
+        if len(stuck) > 5:
+            lines.append(f"...and {len(stuck) - 5} more")
+        sep = "  |  " if len(stuck) <= 3 else "\n"
         self._ov_detail.config(text=sep.join(lines), fg=DIM)
 
     def _show_all_autonomous(self):
@@ -1189,7 +1206,7 @@ class ControlPanel:
         conf_color = GREEN if conf > 0.5 else YELLOW
         self._m_conf.config(text=f"{conf:.2f}", fg=conf_color)
         bar_w = max(1, int(conf * 100))
-        self._conf_bar.coords(self._conf_fill, 0, 0, bar_w, 16)
+        self._conf_bar.coords(self._conf_fill, 0, 0, bar_w, 12)
         self._conf_bar.itemconfig(self._conf_fill, fill=conf_color)
 
         self._m_pipe.config(
@@ -1336,6 +1353,7 @@ class ControlPanel:
         for robot in random.sample(autonomous, n):
             robot.state = "stuck"
             robot.flash_tick = 0
+            robot.stuck_timer = 0.0
             robot.failure_reason = random.choice(FAILURE_REASONS)
         self._update_stuck_display()
 
