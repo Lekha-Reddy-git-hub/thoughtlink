@@ -349,7 +349,7 @@ class ControlPanel:
         # Start loops
         self._last_time = time.time()
         self._update_fleet()
-        self.root.after(8000, self._make_robots_stuck)
+        self.root.after(15000, self._make_robots_stuck)  # 15s before first stuck event
 
         # Send default FORWARD to MuJoCo
         if self.mujoco:
@@ -1361,20 +1361,19 @@ def main():
     print("=" * 60)
     print()
 
-    # Start MuJoCo (optional -- opens its own window)
+    # Start MuJoCo (optional -- opens its own window on the left side)
     mujoco = MuJoCoRunner()
     mujoco.start()
 
-    # Create tkinter window on right half of screen
+    # Create tkinter window on RIGHT half of screen
     root = tk.Tk()
     root.title("ThoughtLink: 100-Robot Fleet | A=auto-play  Q=quit")
     root.configure(bg=BG)
 
-    screen_w = root.winfo_screenwidth()
-    screen_h = root.winfo_screenheight()
-    win_w = screen_w // 2
-    win_h = screen_h - 80
-    root.geometry(f"{win_w}x{win_h}+{screen_w // 2}+0")
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    panel_width = screen_width // 2
+    root.geometry(f"{panel_width}x{screen_height}+{screen_width // 2}+0")
     root.minsize(700, 850)
 
     panel = ControlPanel(root, mujoco)
