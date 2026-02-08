@@ -1,0 +1,20 @@
+Latency-Accuracy Tradeoff: LR vs SVM vs RF vs MLP
+============================================================
+
+Model       Stage 1    Stage 2      Latency
+------------------------------------------
+LR            79.4%      27.4%       11.7ms
+SVM           79.4%      28.1%       11.7ms
+RF            79.4%      27.9%       24.7ms
+MLP           79.1%      24.3%        0.3ms
+
+Notes:
+  - LR, SVM, RF use 69 hand-crafted features (PSD + statistical)
+  - MLP uses raw flattened EEG (3000 inputs)
+  - Latency includes feature extraction time for LR/SVM/RF
+  - All evaluations use cross-subject leave-one-out splits
+  - All models are well under the 100ms real-time threshold
+
+Best Stage 1: RF (79.4%)
+Best Stage 2: SVM (28.1%)
+Fastest: MLP (0.3ms)

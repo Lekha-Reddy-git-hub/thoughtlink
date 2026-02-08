@@ -149,6 +149,19 @@ We compared Random Forest with hand-crafted PSD features against an MLP on raw E
 
 The Kernel Flow dataset includes TD-NIRS (time-domain near-infrared spectroscopy) measuring brain blood flow alongside EEG. We tested multimodal fusion. All 1,728 NIRS features had zero variance across recordings — the hemodynamic response is too slow for the 3-12 second motor imagery windows, or the sensors are positioned too far from motor cortex. Adding NIRS hurt accuracy (Stage 1: 79.4% to 76.0%). EEG alone is necessary and sufficient for this task.
 
+### Latency-Accuracy Tradeoff
+
+We benchmarked four classifiers across both pipeline stages to map the full tradeoff space:
+
+| Model | Stage 1 | Stage 2 | Latency |
+|-------|---------|---------|---------|
+| LR (69 features) | 79.4% | 27.4% | 11.7ms |
+| SVM (69 features) | 79.4% | 28.1% | 11.7ms |
+| RF (69 features) | 79.4% | 27.9% | 24.7ms |
+| MLP (raw 3000) | 79.1% | 24.3% | 0.3ms |
+
+All four models are well under the 100ms real-time threshold. Stage 1 accuracy is nearly identical across LR, SVM, and RF — the binary rest-vs-active separation is robust to model choice. Stage 2 direction accuracy varies more: SVM edges out RF by 0.2%, while MLP on raw EEG falls behind. The key insight: hand-crafted PSD features consistently outperform learned features for cross-subject motor imagery decoding at this data scale.
+
 ### Intent Evolution Over Time
 
 We projected windowed features into 2D via PCA to visualize how brain activity evolves within a single recording. Different intent types follow distinct trajectories through feature space. Rest states cluster tightly; motor imagery states spread along the first principal component (45.5% variance explained). This supports the phase detection approach: transitions between clusters mark INITIATION and RELEASE events.
@@ -202,7 +215,7 @@ git clone https://github.com/Nabla7/brain-robot-interface.git  # For MuJoCo
 | `demo/full_demo.py` | Multi-robot orchestration: 10-robot fleet view + MuJoCo G1 humanoid + chat/button control |
 | `demo/run_all.py` | All 5 brain signals decoded back-to-back with MuJoCo |
 | `demo/override_demo.py` | Autonomous-to-human-override transition scenario |
-| `demo/scalability_demo.py` | Fleet scalability test: 10 robots, 38 robots/core throughput |
+| `demo/scalability_demo.py` | Fleet scalability test: 10/50/100 robots, ~33 robots/core throughput |
 | `demo/run_demo.py` | Single file decode + robot control |
 | `demo/demo_video.py` | Generate animated GIF and summary figures |
 

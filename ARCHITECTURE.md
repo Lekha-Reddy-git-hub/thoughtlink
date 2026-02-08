@@ -110,6 +110,40 @@ The 6 EEG channels are:
 
 4 of 6 channels are frontal -- not over motor cortex. FCz and CPz are closest to motor areas and dominate feature importance.
 
+### 12. Scalability: Hierarchical Group Command Architecture
+
+Scaling from 1 robot to 100+ requires more than a fast decoder. We designed a three-layer command dispatch architecture:
+
+```
+Layer 3: OPERATOR INTENT
+  One human, one BCI decode per decision cycle (~31ms)
+  Output: a single action (FORWARD / LEFT / RIGHT / BACKWARD / STOP)
+
+Layer 2: GROUP DISPATCHER
+  Maps one intent to N robot groups
+  Strategies:
+    - Broadcast: all robots receive the same command (emergency stop)
+    - Round-robin: each stuck robot gets one override, then moves to next
+    - Priority queue: most-stuck robot gets the override first
+
+Layer 3: INDIVIDUAL CONTROLLER
+  Each robot has its own BRI Controller instance
+  Translates high-level action to low-level joint commands
+  Runs independently at its own control frequency (50-200 Hz)
+```
+
+**Impact on operator efficiency:**
+
+| Dispatch Strategy | Robots/Operator | Use Case |
+|-------------------|----------------|----------|
+| Broadcast         | Unlimited      | Emergency stop, formation commands |
+| Round-robin       | 10-50          | Routine stuck-robot recovery |
+| Priority queue    | 50-100+        | Large fleet with heterogeneous failures |
+
+**Why this scales linearly:** The BCI decoder runs once per decision cycle regardless of fleet size. The group dispatcher is O(N) in the number of robots but operates on pre-decoded intent — no additional EEG processing. At 31ms decode latency, a single pipeline instance can make ~32 decisions/second, enough to cycle through 100 robots at 0.3 Hz per robot or 10 robots at 3 Hz.
+
+**Current demo implementation:** `demo/scalability_demo.py` tests 10/50/100 robot fleets with sequential decode. `demo/full_demo.py` demonstrates the priority-queue strategy: 10 robots run autonomously, the operator overrides the one that gets stuck.
+
 ## Limitations
 
 1. **6 channels vs 64+**: Research BCI systems use 64-256 channels. Our 6-channel system has limited spatial resolution.
