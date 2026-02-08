@@ -1,17 +1,23 @@
 """
-ThoughtLink: Multi-Robot Orchestration Demo
-=============================================
-10 robots operate autonomously. One gets stuck. A human operator
-decodes a brain signal to override that robot. The robot resumes.
-This is "one-to-many supervision" and "intent-level control."
+ThoughtLink: Multi-Robot Orchestration Demo (100 Robots)
+=========================================================
+100 robots in 10 groups. Multiple robots get stuck simultaneously.
+The operator uses hierarchical commands:
+  Layer 1: Button click -> override ONE stuck robot
+  Layer 2: "group 3 left" -> send LEFT to all stuck robots in Group 3
+  Layer 3: "group 3 fix" -> individualized actions per robot's failure reason
+  Layer 3+: "fix all" -> individualized actions for ALL stuck robots
 
-Window 1 (left):  MuJoCo G1 humanoid — the overridden robot in 3D
-Window 2 (right): Tkinter control panel — fleet view, metrics, controls
+Window 1 (left):  MuJoCo G1 humanoid
+Window 2 (right): Tkinter control panel -- fleet view, metrics, controls
 
 Controls:
-  Click a signal button or type a command to override the stuck robot.
-  Press A for auto-play (cycles all 5 signals, 5s each).
-  Press Q to quit.
+  Click a signal button to override one stuck robot.
+  Type "group 3 left" to send LEFT to all stuck in Group 3.
+  Type "group 3 fix" for context-aware individualized overrides.
+  Type "fix all" for fleet-wide context-aware override.
+  Press A for auto-play (showcases all 3 layers).
+  Press Q to quit. Press 1/2/3 for evidence charts.
 
 Usage: python demo/full_demo.py
 """
@@ -20,6 +26,7 @@ import os
 import time
 import random
 import math
+import re
 import threading
 import tkinter as tk
 import numpy as np
@@ -72,6 +79,29 @@ DEMO_FILES = {
     "Relax":          "2161ecb6-12.npz",
 }
 
+NUM_ROBOTS = 100
+NUM_GROUPS = 10
+ROBOTS_PER_GROUP = 10
+
+GROUP_COLORS = {
+    1: "#4CAF50", 2: "#2196F3", 3: "#FF9800", 4: "#9C27B0", 5: "#00BCD4",
+    6: "#FFEB3B", 7: "#E91E63", 8: "#8BC34A", 9: "#FF5722", 10: "#FFFFFF",
+}
+
+FAILURE_ACTIONS = {
+    "obstacle_left": "RIGHT",
+    "obstacle_right": "LEFT",
+    "lost_target": "FORWARD",
+    "failed_task": "BACKWARD",
+    "unknown": "STOP",
+}
+FAILURE_REASONS = list(FAILURE_ACTIONS.keys())
+
+CHAT_DIRECTION_MAP = {
+    "left": "Left Fist", "right": "Right Fist", "forward": "Both Fists",
+    "backward": "Tongue Tapping", "back": "Tongue Tapping", "stop": "Relax",
+}
+
 # Longest-first so "turn left" matches before "left"
 CHAT_COMMANDS = [
     ("turn left",  "Left Fist"),
@@ -118,65 +148,75 @@ print(" done")
 # =====================================================================
 
 class FleetRobot:
-    """One robot in the 2D fleet view."""
+    """One robot in the 2D fleet view. Belongs to a group with a bounded region."""
 
-    def __init__(self, robot_id, x, y):
+    def __init__(self, robot_id, group_id):
         self.id = robot_id
-        self.x = x
-        self.y = y
+        self.group_id = group_id
+
+        # Region in percentage coords (0-100 canvas space)
+        col = (group_id - 1) % 5
+        row = (group_id - 1) // 5
+        self.region = (
+            col * 20 + 1.5,         # x_min
+            (col + 1) * 20 - 1.5,   # x_max
+            row * 50 + 5,           # y_min (room for group label)
+            (row + 1) * 50 - 1.5,   # y_max
+        )
+
+        self.x = random.uniform(self.region[0] + 1, self.region[1] - 1)
+        self.y = random.uniform(self.region[2] + 1, self.region[3] - 1)
         self.heading = random.uniform(0, 360)
-        self.speed = random.uniform(0.15, 0.25)
+        self.speed = random.uniform(0.08, 0.15)
         self.state = "autonomous"          # autonomous | stuck | override
-        self.dir_timer = random.uniform(3, 5)
+        self.dir_timer = random.uniform(2, 4)
         self.flash_tick = 0
         self.override_timer = 0.0
         self.override_action = None
+        self.failure_reason = None
 
     def update(self, dt):
         self.flash_tick += 1
+        x_min, x_max, y_min, y_max = self.region
 
         if self.state == "autonomous":
             rad = math.radians(self.heading)
             self.x += self.speed * math.cos(rad) * dt * 30
             self.y += self.speed * math.sin(rad) * dt * 30
-            # Bounce off boundaries
-            if self.x < 5 or self.x > 95:
+            # Bounce within group region
+            if self.x < x_min or self.x > x_max:
                 self.heading = 180 - self.heading
-                self.x = max(5, min(95, self.x))
-            if self.y < 5 or self.y > 95:
+                self.x = max(x_min, min(x_max, self.x))
+            if self.y < y_min or self.y > y_max:
                 self.heading = -self.heading
-                self.y = max(5, min(95, self.y))
-            # Random direction changes
+                self.y = max(y_min, min(y_max, self.y))
             self.dir_timer -= dt
             if self.dir_timer <= 0:
                 self.heading += random.uniform(-90, 90)
-                self.dir_timer = random.uniform(3, 5)
+                self.dir_timer = random.uniform(2, 4)
 
         elif self.state == "override":
-            # Move in the override direction
             if self.override_action and self.override_action != "STOP":
                 dx, dy = {"LEFT": (-1, 0), "RIGHT": (1, 0),
                           "FORWARD": (0, -1), "BACKWARD": (0, 1),
                           }.get(self.override_action, (0, 0))
-                self.x += dx * 0.5 * dt * 30
-                self.y += dy * 0.5 * dt * 30
-                self.x = max(5, min(95, self.x))
-                self.y = max(5, min(95, self.y))
+                self.x += dx * 0.3 * dt * 30
+                self.y += dy * 0.3 * dt * 30
+                self.x = max(x_min, min(x_max, self.x))
+                self.y = max(y_min, min(y_max, self.y))
             self.override_timer -= dt
             if self.override_timer <= 0:
                 self.state = "autonomous"
                 self.override_action = None
-                self.dir_timer = random.uniform(3, 5)
-
-        # stuck: don't move (handled by get_color flash)
+                self.failure_reason = None
+                self.dir_timer = random.uniform(2, 4)
 
     def get_color(self):
         if self.state == "autonomous":
-            return GREEN
+            return GROUP_COLORS.get(self.group_id, "#FFFFFF")
         elif self.state == "stuck":
             return RED if self.flash_tick % 30 < 15 else "#3d1111"
         elif self.state == "override":
-            # White flash for the first second, then action color
             if self.override_timer > 2.0 and self.flash_tick % 10 < 5:
                 return "#ffffff"
             return ACTION_COLORS.get(self.override_action, BLUE)
@@ -269,32 +309,39 @@ class MuJoCoRunner:
 # =====================================================================
 
 class ControlPanel:
-    """Right-half tkinter window: fleet view, override, metrics, controls."""
+    """Tkinter window: 100-robot fleet, hierarchical overrides, metrics."""
 
     def __init__(self, root, mujoco_runner):
         self.root = root
         self.mujoco = mujoco_runner if mujoco_runner and mujoco_runner.available else None
 
-        # Fleet state
+        # Fleet: 100 robots in 10 groups
         self.robots = []
-        for i in range(10):
-            angle = i * 2 * math.pi / 10
-            x = 50 + 30 * math.cos(angle)
-            y = 50 + 22 * math.sin(angle)
-            self.robots.append(FleetRobot(i + 1, x, y))
-
-        self.stuck_robot = None
-        self._override_target = None
-        self._current_mujoco_action = "FORWARD"
+        for i in range(NUM_ROBOTS):
+            group = i // ROBOTS_PER_GROUP + 1
+            self.robots.append(FleetRobot(i, group))
 
         # Pipeline state
         self._pipeline_running = False
         self._pipeline_result = None
+        self._decode_cmd_type = "single"
+        self._decode_group = None
+        self._decode_label = None
+        self._decode_target = None
+        self._current_mujoco_action = "FORWARD"
+
+        # Efficiency tracking
+        self.total_robots_overridden = 0
+        self.total_commands_issued = 0
 
         # Auto-play state
         self.autoplay = False
-        self._autoplay_idx = 0
+        self._autoplay_step = 0
         self._autoplay_timer = 0.0
+        self._autoplay_retry = False
+
+        # Track display state to avoid redundant updates
+        self._last_stuck_ids = frozenset()
 
         # Build UI
         self._build_ui()
@@ -302,13 +349,13 @@ class ControlPanel:
         # Start loops
         self._last_time = time.time()
         self._update_fleet()
-        self.root.after(8000, self._make_robot_stuck)
+        self.root.after(8000, self._make_robots_stuck)
 
         # Send default FORWARD to MuJoCo
         if self.mujoco:
             self.mujoco.set_action("FORWARD")
 
-        # Key bindings (only when not typing in chat)
+        # Key bindings
         self.root.bind("<Key>", self._on_key)
 
     # -----------------------------------------------------------------
@@ -318,10 +365,8 @@ class ControlPanel:
     def _build_ui(self):
         main = tk.Frame(self.root, bg=BG)
         main.pack(fill=tk.BOTH, expand=True)
-        self._main = main
 
-        # Title
-        tk.Label(main, text="ThoughtLink: Multi-Robot Orchestration",
+        tk.Label(main, text="ThoughtLink: 100-Robot Fleet Orchestration",
                  font=(FONT, 14, "bold"), fg=TEXT, bg=BG).pack(pady=(5, 2))
 
         self._build_fleet(main)
@@ -332,65 +377,67 @@ class ControlPanel:
         self._build_eeg(main)
 
     def _build_fleet(self, parent):
-        """SECTION 1: Fleet overview canvas."""
+        """SECTION 1: Fleet overview with 100 robots in 10 groups."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1)
         frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
         self.fleet_counter = tk.Label(
-            frame, text="Fleet: 10 | Autonomous: 10 | Override: 0",
-            font=(FONT, 14, "bold"), fg=TEXT, bg=BG2)
+            frame, text="Fleet: 100 | Autonomous: 100 | Stuck: 0 | Groups affected: 0",
+            font=(FONT, 12, "bold"), fg=TEXT, bg=BG2)
         self.fleet_counter.pack(pady=(4, 0))
 
-        self.canvas = tk.Canvas(frame, bg=BG2, highlightthickness=0)
+        self.canvas = tk.Canvas(frame, bg=BG2, highlightthickness=0, height=300)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
-        # Create canvas items for each robot (oval + number)
+        # Create canvas items for each robot
         self._ovals = []
-        self._labels = []
+        self._robot_labels = []
         for robot in self.robots:
-            ov = self.canvas.create_oval(0, 0, 12, 12, fill=GREEN, outline="")
-            lb = self.canvas.create_text(0, 0, text=str(robot.id),
-                                         fill="white", font=(FONT, 7, "bold"))
+            ov = self.canvas.create_oval(0, 0, 8, 8,
+                fill=GROUP_COLORS.get(robot.group_id, "#FFF"), outline="")
+            lb = self.canvas.create_text(0, 0, text=f"{robot.id:02d}",
+                fill="white", font=(FONT, 7, "bold"), state="hidden")
             self._ovals.append(ov)
-            self._labels.append(lb)
+            self._robot_labels.append(lb)
 
-        # Stuck indicator items (hidden initially)
-        self._stuck_line = self.canvas.create_line(
-            0, 0, 0, 0, fill=RED, width=2, dash=(4, 2), state="hidden")
-        self._stuck_text = self.canvas.create_text(
-            0, 0, text="AWAITING OVERRIDE",
-            fill=RED, font=(FONT, 10, "bold"), state="hidden")
+        # Group labels (G1-G10)
+        self._group_labels = []
+        for g in range(1, NUM_GROUPS + 1):
+            gl = self.canvas.create_text(0, 0, text=f"G{g}",
+                fill=GROUP_COLORS.get(g, "#FFF"), font=(FONT, 10, "bold"))
+            self._group_labels.append(gl)
 
-        tk.Label(frame, text="38 robots/core at 1Hz | Demo: 10 robots",
+        tk.Label(frame, text="~33 robots/core at 1Hz | 10 groups x 10 robots",
                  font=(FONT, 9), fg=DIM, bg=BG2).pack(pady=(0, 4))
 
     def _build_override(self, parent):
-        """SECTION 2: Current override status."""
+        """SECTION 2: Override status (supports multi-robot display)."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=170)
+                         height=220)
         frame.pack(fill=tk.X, padx=8, pady=4)
         frame.pack_propagate(False)
 
         self._ov_status = tk.Label(
             frame, text="ALL ROBOTS AUTONOMOUS",
-            font=(FONT, 22, "bold"), fg="#1a4d2e", bg=BG2)
-        self._ov_status.pack(pady=(10, 0))
+            font=(FONT, 16, "bold"), fg="#1a4d2e", bg=BG2)
+        self._ov_status.pack(pady=(8, 0))
 
         self._ov_action = tk.Label(
-            frame, text="", font=(FONT, 48, "bold"), fg=GRAY, bg=BG2)
+            frame, text="", font=(FONT, 28, "bold"), fg=GRAY, bg=BG2)
         self._ov_action.pack()
 
         self._ov_detail = tk.Label(
-            frame, text="", font=(FONT, 11), fg=DIM, bg=BG2)
-        self._ov_detail.pack(pady=(0, 8))
+            frame, text="", font=("Consolas", 9), fg=DIM, bg=BG2,
+            justify="left", anchor="w")
+        self._ov_detail.pack(fill=tk.X, padx=15, pady=(0, 8))
 
     def _build_metrics(self, parent):
-        """SECTION 3: Live metrics."""
+        """SECTION 3: Live metrics + efficiency counter."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
-                         height=115)
+                         height=140)
         frame.pack(fill=tk.X, padx=8, pady=4)
         frame.pack_propagate(False)
 
@@ -435,6 +482,14 @@ class ControlPanel:
                                fg=DIM, bg=BG2)
         self._m_win.pack(side=tk.LEFT, padx=5)
 
+        # Row 3: Efficiency
+        r3 = tk.Frame(inner, bg=BG2)
+        r3.pack(fill=tk.X, pady=(5, 0))
+
+        self._m_eff = tk.Label(r3, text="Session: Awaiting first command...",
+                               font=(FONT, 10), fg=DIM, bg=BG2)
+        self._m_eff.pack(side=tk.LEFT)
+
     def _build_controls(self, parent):
         """SECTION 4: Brain signal buttons."""
         frame = tk.Frame(parent, bg=BG2,
@@ -476,7 +531,7 @@ class ControlPanel:
             row, font=(FONT, 11), bg="#21262d", fg=DIM,
             insertbackground=TEXT, relief=tk.FLAT, bd=5)
         self._chat_placeholder = True
-        self._chat.insert(0, "Type command... (e.g. 'turn left', 'go forward', 'stop')")
+        self._chat.insert(0, "Try: 'group 3 fix', 'group 1 left', 'fix all', or 'turn left'")
         self._chat.bind("<FocusIn>", self._on_chat_focus)
         self._chat.bind("<FocusOut>", self._on_chat_blur)
         self._chat.bind("<Return>", lambda e: self._on_chat_submit())
@@ -492,7 +547,7 @@ class ControlPanel:
         self._chat_result.pack(fill=tk.X, padx=10)
 
     def _build_eeg(self, parent):
-        """SECTION 6: EEG preview + info."""
+        """SECTION 6: EEG preview + key hints."""
         frame = tk.Frame(parent, bg=BG2,
                          highlightbackground=BORDER, highlightthickness=1,
                          height=130)
@@ -513,7 +568,7 @@ class ControlPanel:
         self._eeg_canvas.draw()
 
         tk.Label(frame,
-                 text="Keys: A=Auto-play | Q=Quit | 1=Latency Tradeoffs | 2=Scalability | 3=Failure Analysis",
+                 text="Keys: A=Auto-play | Q=Quit | 1=Latency | 2=Scalability | 3=Failures",
                  font=(FONT, 9), fg=DIM, bg=BG2).pack(pady=(2, 5))
 
     # -----------------------------------------------------------------
@@ -522,7 +577,7 @@ class ControlPanel:
 
     def _update_fleet(self):
         now = time.time()
-        dt = min(now - self._last_time, 0.1)  # cap to avoid jumps
+        dt = min(now - self._last_time, 0.1)
         self._last_time = now
 
         # Update robot positions
@@ -536,80 +591,124 @@ class ControlPanel:
             self.root.after(33, self._update_fleet)
             return
 
-        # Redraw robot positions and colors
+        # Redraw robots
         auto_n = 0
-        ovr_n = 0
+        stuck_n = 0
+        stuck_groups = set()
+        current_stuck_ids = set()
+
         for i, robot in enumerate(self.robots):
             cx = robot.x / 100 * cw
             cy = robot.y / 100 * ch
-            r = 6
+            r = 5 if robot.state == "stuck" else 4
             self.canvas.coords(self._ovals[i], cx - r, cy - r, cx + r, cy + r)
-            self.canvas.coords(self._labels[i], cx, cy)
             self.canvas.itemconfig(self._ovals[i], fill=robot.get_color())
-            if robot.state == "autonomous":
-                auto_n += 1
+
+            # Show label only for stuck robots
+            if robot.state == "stuck":
+                self.canvas.coords(self._robot_labels[i], cx + 10, cy)
+                self.canvas.itemconfig(self._robot_labels[i], state="normal")
+                stuck_n += 1
+                stuck_groups.add(robot.group_id)
+                current_stuck_ids.add(robot.id)
             else:
-                ovr_n += 1
+                self.canvas.itemconfig(self._robot_labels[i], state="hidden")
+                if robot.state == "autonomous":
+                    auto_n += 1
 
-        # Stuck indicator line + text
-        if self.stuck_robot and self.stuck_robot.state == "stuck":
-            sx = self.stuck_robot.x / 100 * cw
-            sy = self.stuck_robot.y / 100 * ch
-            tx, ty = cw * 0.75, 18
-            self.canvas.coords(self._stuck_line, sx, sy, tx, ty)
-            self.canvas.coords(self._stuck_text, tx, ty)
-            self.canvas.itemconfig(self._stuck_line, state="normal")
-            self.canvas.itemconfig(self._stuck_text, state="normal")
-        else:
-            self.canvas.itemconfig(self._stuck_line, state="hidden")
-            self.canvas.itemconfig(self._stuck_text, state="hidden")
+        # Group labels
+        for g_idx in range(NUM_GROUPS):
+            g = g_idx + 1
+            col = (g - 1) % 5
+            row = (g - 1) // 5
+            gx = (col * 20 + (col + 1) * 20) / 2 / 100 * cw
+            gy = (row * 50 + 3) / 100 * ch
+            self.canvas.coords(self._group_labels[g_idx], gx, gy)
 
-        # Counter
+        # Fleet counter
         self.fleet_counter.config(
-            text=f"Fleet: 10 | Autonomous: {auto_n} | Override: {ovr_n}")
+            text=f"Fleet: {NUM_ROBOTS} | Autonomous: {auto_n} | "
+                 f"Stuck: {stuck_n} | Groups affected: {len(stuck_groups)}")
 
-        # Check if override period ended → clear display
-        if self._override_target and self._override_target.state == "autonomous":
-            self._show_all_autonomous()
-            self._override_target = None
-            if self.mujoco:
-                self.mujoco.set_action("FORWARD")
-                self._current_mujoco_action = "FORWARD"
+        # Update override display when state changes
+        current_stuck_frozen = frozenset(current_stuck_ids)
+        any_override = any(r.state == "override" for r in self.robots)
+        if not any_override and current_stuck_frozen != self._last_stuck_ids:
+            self._last_stuck_ids = current_stuck_frozen
+            if stuck_n > 0:
+                self._update_stuck_display()
+            else:
+                self._show_all_autonomous()
 
         # MuJoCo: re-send action + track camera
         if self.mujoco:
             self.mujoco.set_action(self._current_mujoco_action)
             self.mujoco.update_camera()
 
-        # Auto-play timer
+        # Auto-play
         if self.autoplay and not self._pipeline_running:
-            self._autoplay_timer -= dt
-            if self._autoplay_timer <= 0:
-                self._autoplay_next()
+            self._autoplay_tick(dt)
 
         self.root.after(33, self._update_fleet)
 
-    def _make_robot_stuck(self):
-        """Every 8 seconds, make a random autonomous robot stuck."""
-        if self.stuck_robot is None or self.stuck_robot.state != "stuck":
-            autonomous = [r for r in self.robots if r.state == "autonomous"]
-            if autonomous:
-                robot = random.choice(autonomous)
+    def _make_robots_stuck(self):
+        """Every 8 seconds, make 3-6 robots stuck across 2-3 groups."""
+        n_groups = random.randint(2, 3)
+        groups = random.sample(range(1, NUM_GROUPS + 1), min(n_groups, NUM_GROUPS))
+
+        new_stuck = 0
+        for g in groups:
+            autonomous = [r for r in self.robots
+                          if r.group_id == g and r.state == "autonomous"]
+            if not autonomous:
+                continue
+            n = random.randint(1, min(3, len(autonomous)))
+            for robot in random.sample(autonomous, n):
                 robot.state = "stuck"
                 robot.flash_tick = 0
-                self.stuck_robot = robot
-                self._ov_status.config(
-                    text=f"ROBOT #{robot.id} NEEDS OVERRIDE", fg=RED)
-                self._ov_action.config(text="", fg=GRAY)
-                self._ov_detail.config(text="")
-        self.root.after(8000, self._make_robot_stuck)
+                robot.failure_reason = random.choice(FAILURE_REASONS)
+                new_stuck += 1
+
+        if new_stuck > 0:
+            any_override = any(r.state == "override" for r in self.robots)
+            if not any_override:
+                self._update_stuck_display()
+
+        self.root.after(8000, self._make_robots_stuck)
+
+    def _update_stuck_display(self):
+        """Update override status to show currently stuck robots."""
+        stuck = [r for r in self.robots if r.state == "stuck"]
+        if not stuck:
+            self._show_all_autonomous()
+            return
+
+        by_group = {}
+        for r in stuck:
+            by_group.setdefault(r.group_id, []).append(r)
+
+        parts = [f"{len(rs)} in G{g}" for g, rs in sorted(by_group.items())]
+        self._ov_status.config(text=f"STUCK: {', '.join(parts)}", fg=RED)
+        self._ov_action.config(text="", fg=GRAY)
+
+        lines = []
+        for r in stuck[:8]:
+            lines.append(f"R{r.id:02d}: {r.failure_reason}")
+        if len(stuck) > 8:
+            lines.append(f"...and {len(stuck) - 8} more")
+        sep = "  |  " if len(stuck) <= 4 else "\n"
+        self._ov_detail.config(text=sep.join(lines), fg=DIM)
+
+    def _show_all_autonomous(self):
+        self._ov_status.config(text="ALL ROBOTS AUTONOMOUS", fg="#1a4d2e")
+        self._ov_action.config(text="", fg=GRAY)
+        self._ov_detail.config(text="")
 
     # -----------------------------------------------------------------
     #  EVENT HANDLERS
     # -----------------------------------------------------------------
 
     def _on_key(self, event):
-        """Global key handler (ignored when typing in chat)."""
         if isinstance(self.root.focus_get(), tk.Entry):
             return
         ch = event.char.lower() if event.char else ""
@@ -621,7 +720,6 @@ class ControlPanel:
             self._show_evidence_chart(ch)
 
     def _show_evidence_chart(self, key):
-        """Open a matplotlib window showing a bonus evidence chart."""
         fname, title = EVIDENCE_CHARTS[key]
         path = os.path.join(RESULTS_DIR, fname)
         if not os.path.exists(path):
@@ -636,10 +734,10 @@ class ControlPanel:
         plt.show(block=False)
 
     def _on_signal(self, label):
-        """Brain signal button clicked."""
+        """Brain signal button -> single robot override."""
         if self._pipeline_running:
             return
-        self._run_decode(label)
+        self._run_decode(label, cmd_type="single")
 
     def _on_chat_focus(self, event):
         if self._chat_placeholder:
@@ -651,55 +749,127 @@ class ControlPanel:
         if not self._chat.get().strip():
             self._chat.delete(0, tk.END)
             self._chat.insert(0,
-                "Type command... (e.g. 'turn left', 'go forward', 'stop')")
+                "Try: 'group 3 fix', 'group 1 left', 'fix all', or 'turn left'")
             self._chat.config(fg=DIM)
             self._chat_placeholder = True
 
     def _on_chat_submit(self):
         if self._pipeline_running:
             return
-        text = self._chat.get().strip().lower()
+        text = self._chat.get().strip()
         if not text or self._chat_placeholder:
             return
 
-        # Match command (longest first)
-        label = None
-        for cmd, lbl in CHAT_COMMANDS:
-            if cmd in text:
-                label = lbl
-                break
+        text_lower = text.lower()
+        self._chat.delete(0, tk.END)
+        self._chat_placeholder = False
 
-        if label is None:
+        cmd_type, group, param = self._parse_chat_command(text_lower)
+
+        if cmd_type == "unknown":
             self._chat_result.config(
-                text=f"Unknown command: '{text}'. Try 'left', 'forward', 'stop'...",
+                text="Unknown command. Try: 'group 3 fix', 'group 1 left', 'fix all', or 'turn left'",
                 fg=RED)
             return
 
-        self._chat.delete(0, tk.END)
-        self._chat_placeholder = False
-        self._run_decode(label)
+        if cmd_type == "fix_all":
+            stuck = [r for r in self.robots if r.state == "stuck"]
+            if not stuck:
+                self._chat_result.config(text="No stuck robots to fix.", fg=YELLOW)
+                return
+            label = random.choice(list(DEMO_FILES.keys()))
+            self._run_decode(label, cmd_type="fix_all")
+
+        elif cmd_type == "group_fix":
+            if group < 1 or group > NUM_GROUPS:
+                self._chat_result.config(
+                    text="Invalid group. Groups are 1-10.", fg=RED)
+                return
+            stuck = [r for r in self.robots
+                     if r.group_id == group and r.state == "stuck"]
+            if not stuck:
+                self._chat_result.config(
+                    text=f"No stuck robots in Group {group}.", fg=YELLOW)
+                return
+            label = random.choice(list(DEMO_FILES.keys()))
+            self._run_decode(label, cmd_type="group_fix", group=group)
+
+        elif cmd_type == "group_direction":
+            if group < 1 or group > NUM_GROUPS:
+                self._chat_result.config(
+                    text="Invalid group. Groups are 1-10.", fg=RED)
+                return
+            stuck = [r for r in self.robots
+                     if r.group_id == group and r.state == "stuck"]
+            if not stuck:
+                self._chat_result.config(
+                    text=f"No stuck robots in Group {group}.", fg=YELLOW)
+                return
+            label = CHAT_DIRECTION_MAP.get(param)
+            if not label:
+                self._chat_result.config(
+                    text=f"Unknown direction: {param}", fg=RED)
+                return
+            self._run_decode(label, cmd_type="group_direction", group=group)
+
+        elif cmd_type == "single":
+            self._run_decode(param, cmd_type="single")
+
+    def _parse_chat_command(self, text):
+        """Parse chat input. Returns (cmd_type, group, param)."""
+        # Fix all
+        if re.match(r"fix\s+all|fix\s+everything|override\s+all", text):
+            return ("fix_all", None, None)
+
+        # Group fix: "group 3 fix" or "fix group 3" or "group 3 resolve"
+        m = re.match(
+            r"(?:group\s*(\d+)\s+(?:fix|resolve)|(?:fix|resolve)\s+group\s*(\d+))",
+            text)
+        if m:
+            group = int(m.group(1) or m.group(2))
+            return ("group_fix", group, None)
+
+        # Group direction: "group 3 left"
+        m = re.match(
+            r"group\s*(\d+)\s+(left|right|forward|backward|back|stop)", text)
+        if m:
+            return ("group_direction", int(m.group(1)), m.group(2))
+
+        # Simple direction (existing behavior)
+        for cmd, lbl in CHAT_COMMANDS:
+            if cmd in text:
+                return ("single", None, lbl)
+
+        return ("unknown", None, None)
 
     # -----------------------------------------------------------------
     #  PIPELINE DECODE
     # -----------------------------------------------------------------
 
-    def _run_decode(self, label):
+    def _run_decode(self, label, cmd_type="single", group=None):
         """Start pipeline decode in a background thread."""
         self._pipeline_running = True
         self._pipeline_result = None
-
-        # Pick target robot
-        if self.stuck_robot and self.stuck_robot.state == "stuck":
-            target = self.stuck_robot
-        else:
-            target = random.choice(self.robots)
-
-        self._decode_target = target
+        self._decode_cmd_type = cmd_type
+        self._decode_group = group
         self._decode_label = label
 
+        if cmd_type == "single":
+            stuck = [r for r in self.robots if r.state == "stuck"]
+            self._decode_target = stuck[0] if stuck else random.choice(self.robots)
+
         # Show decoding status
-        self._ov_status.config(
-            text=f"DECODING: {label}...", fg=YELLOW)
+        if cmd_type == "single":
+            self._ov_status.config(text=f"DECODING: {label}...", fg=YELLOW)
+        elif cmd_type == "group_direction":
+            self._ov_status.config(
+                text=f"DECODING: {label} for Group {group}...", fg=YELLOW)
+        elif cmd_type == "group_fix":
+            self._ov_status.config(
+                text=f"DECODING: trigger for Group {group} fix...", fg=YELLOW)
+        elif cmd_type == "fix_all":
+            self._ov_status.config(
+                text="DECODING: trigger for fleet-wide fix...", fg=YELLOW)
         self._ov_action.config(text="...", fg=YELLOW)
         self._ov_detail.config(text="")
 
@@ -718,17 +888,14 @@ class ControlPanel:
             if not os.path.exists(npz_path):
                 return
 
-            # Fresh pipeline instance, shared models
             pipe = ThoughtLinkPipeline()
             pipe.stage1_model = PIPELINE.stage1_model
             pipe.stage2_model = PIPELINE.stage2_model
             pipe.DIRECTION_TO_ACTION = PIPELINE.DIRECTION_TO_ACTION
 
-            # Load raw EEG for display
             arr = np.load(npz_path, allow_pickle=True)
             eeg_raw = arr["feature_eeg"]
 
-            # Consume all windows
             results = []
             for item in pipe.process_file(npz_path):
                 if len(item) == 4:
@@ -743,8 +910,8 @@ class ControlPanel:
             dominant = Counter(actions).most_common(1)[0][0]
             metrics = pipe.get_metrics()
             last_phase = results[-1][3]
-
             s1_status = "ACTIVE" if dominant != "STOP" else "REST"
+
             self._pipeline_result = {
                 "action": dominant,
                 "label": label,
@@ -760,35 +927,241 @@ class ControlPanel:
             self._pipeline_result = None
 
     def _poll_decode(self, thread):
-        """Poll for pipeline completion, then apply result."""
+        """Poll for pipeline completion, then dispatch result."""
         if thread.is_alive():
             self.root.after(50, lambda: self._poll_decode(thread))
             return
 
         self._pipeline_running = False
         result = self._pipeline_result
-        target = self._decode_target
 
         if result is None:
             self._ov_status.config(text="DECODE FAILED", fg=RED)
             self._ov_action.config(text="", fg=GRAY)
             return
 
+        cmd_type = self._decode_cmd_type
+        group = self._decode_group
+
+        if cmd_type == "single":
+            self._apply_single_override(result)
+        elif cmd_type == "group_direction":
+            self._apply_group_direction(result, group)
+        elif cmd_type == "group_fix":
+            self._apply_group_fix(result, group)
+        elif cmd_type == "fix_all":
+            self._apply_fix_all(result)
+
+    # -----------------------------------------------------------------
+    #  OVERRIDE APPLICATION
+    # -----------------------------------------------------------------
+
+    def _apply_single_override(self, result):
+        """Layer 1: Override a single stuck robot."""
+        target = self._decode_target
         action = result["action"]
         label = result["label"]
-        color = ACTION_COLORS.get(action, GRAY)
         lat = result["latency"]
         conf = result["confidence"]
+        color = ACTION_COLORS.get(action, GRAY)
 
-        # --- Update override section ---
         self._ov_status.config(
-            text=f"OVERRIDE SENT: {action} \u2192 Robot #{target.id}", fg=GREEN)
+            text=f"OVERRIDE SENT: {action} \u2192 Robot #{target.id:02d}", fg=GREEN)
         self._ov_action.config(text=action, fg=color)
         self._ov_detail.config(
-            text=f"Brain Signal: {label} \u2192 {action} | Phase: {result['phase']}",
+            text=f"Decoded: {label} EEG ({lat:.0f}ms, conf {conf:.2f})",
             fg=TEXT)
 
-        # --- Update metrics ---
+        target.state = "override"
+        target.override_action = action
+        target.override_timer = 3.0
+        target.flash_tick = 0
+
+        self.total_robots_overridden += 1
+        self.total_commands_issued += 1
+        self._update_efficiency()
+        self._update_metrics(result)
+        self._draw_eeg(result["eeg_raw"])
+
+        if self.mujoco:
+            self.mujoco.set_action(action)
+            self._current_mujoco_action = action
+
+        self._chat_result.config(
+            text=f"Decoded: {label} \u2192 {action} ({lat:.0f}ms) "
+                 f"\u2192 Robot #{target.id:02d}",
+            fg=GREEN)
+
+    def _apply_group_direction(self, result, group):
+        """Layer 2: Send same decoded action to all stuck robots in a group."""
+        stuck = [r for r in self.robots
+                 if r.group_id == group and r.state == "stuck"]
+        if not stuck:
+            self._ov_status.config(
+                text=f"No stuck robots in Group {group}", fg=YELLOW)
+            return
+
+        action = result["action"]
+        label = result["label"]
+        lat = result["latency"]
+        color = ACTION_COLORS.get(action, GRAY)
+
+        ids = ", ".join(f"R{r.id:02d}" for r in stuck)
+        self._ov_status.config(
+            text=f"GROUP {group} OVERRIDE: {action} \u2192 "
+                 f"{len(stuck)} robots ({ids})",
+            fg=GREEN)
+        self._ov_action.config(text=action, fg=color)
+        self._ov_detail.config(
+            text=f"Decoded: {label} EEG ({lat:.0f}ms) | Same action to all",
+            fg=TEXT)
+
+        for robot in stuck:
+            robot.state = "override"
+            robot.override_action = action
+            robot.override_timer = 3.0
+            robot.flash_tick = 0
+
+        self.total_robots_overridden += len(stuck)
+        self.total_commands_issued += 1
+        self._update_efficiency()
+        self._update_metrics(result)
+        self._draw_eeg(result["eeg_raw"])
+
+        if self.mujoco:
+            self.mujoco.set_action(action)
+            self._current_mujoco_action = action
+
+        self._chat_result.config(
+            text=f"Group {group}: {label} \u2192 {action} "
+                 f"\u2192 {len(stuck)} robots",
+            fg=GREEN)
+
+    def _apply_group_fix(self, result, group):
+        """Layer 3: Individualized actions based on each robot's failure reason."""
+        stuck = [r for r in self.robots
+                 if r.group_id == group and r.state == "stuck"]
+        if not stuck:
+            self._ov_status.config(
+                text=f"No stuck robots in Group {group}", fg=YELLOW)
+            return
+
+        label = result["label"]
+        lat = result["latency"]
+
+        self._ov_status.config(
+            text=f"GROUP {group} OVERRIDE ({len(stuck)} robots) "
+                 f"\u2014 Context-Aware:",
+            fg=GREEN)
+
+        lines = []
+        last_action = "STOP"
+        for r in stuck[:8]:
+            a = FAILURE_ACTIONS.get(r.failure_reason, "STOP")
+            lines.append(f"  R{r.id:02d}: {r.failure_reason} \u2192 {a}")
+            last_action = a
+        if len(stuck) > 8:
+            lines.append(f"  ...and {len(stuck) - 8} more")
+        lines.append(
+            f"  Triggered by: {label} EEG ({lat:.0f}ms) | "
+            f"1 command \u2192 {len(stuck)} individualized actions")
+
+        self._ov_action.config(text="CONTEXT-AWARE", fg=GREEN)
+        self._ov_detail.config(text="\n".join(lines), fg=TEXT)
+
+        for robot in stuck:
+            a = FAILURE_ACTIONS.get(robot.failure_reason, "STOP")
+            robot.state = "override"
+            robot.override_action = a
+            robot.override_timer = 3.0
+            robot.flash_tick = 0
+            last_action = a
+
+        self.total_robots_overridden += len(stuck)
+        self.total_commands_issued += 1
+        self._update_efficiency()
+        self._update_metrics(result)
+        self._draw_eeg(result["eeg_raw"])
+
+        if self.mujoco:
+            self.mujoco.set_action(last_action)
+            self._current_mujoco_action = last_action
+
+        self._chat_result.config(
+            text=f"Group {group} fix: 1 decode \u2192 "
+                 f"{len(stuck)} individualized actions",
+            fg=GREEN)
+
+    def _apply_fix_all(self, result):
+        """Layer 3+: Individualized actions for ALL stuck robots."""
+        stuck = [r for r in self.robots if r.state == "stuck"]
+        if not stuck:
+            self._ov_status.config(text="No stuck robots to fix.", fg=YELLOW)
+            return
+
+        label = result["label"]
+        lat = result["latency"]
+
+        by_group = {}
+        for r in stuck:
+            by_group.setdefault(r.group_id, []).append(r)
+
+        self._ov_status.config(
+            text=f"FLEET-WIDE OVERRIDE ({len(stuck)} robots) "
+                 f"\u2014 Context-Aware:",
+            fg=GREEN)
+
+        lines = []
+        count = 0
+        last_action = "STOP"
+        for g in sorted(by_group.keys()):
+            for r in by_group[g]:
+                if count < 8:
+                    a = FAILURE_ACTIONS.get(r.failure_reason, "STOP")
+                    lines.append(
+                        f"  R{r.id:02d} (G{g}): {r.failure_reason} \u2192 {a}")
+                count += 1
+        if len(stuck) > 8:
+            lines.append(f"  ...and {len(stuck) - 8} more")
+        lines.append(
+            f"  Triggered by: {label} EEG ({lat:.0f}ms) | "
+            f"1 command \u2192 {len(stuck)} individualized actions")
+
+        self._ov_action.config(text="FLEET FIX", fg=GREEN)
+        self._ov_detail.config(text="\n".join(lines), fg=TEXT)
+
+        for robot in stuck:
+            a = FAILURE_ACTIONS.get(robot.failure_reason, "STOP")
+            robot.state = "override"
+            robot.override_action = a
+            robot.override_timer = 3.0
+            robot.flash_tick = 0
+            last_action = a
+
+        self.total_robots_overridden += len(stuck)
+        self.total_commands_issued += 1
+        self._update_efficiency()
+        self._update_metrics(result)
+        self._draw_eeg(result["eeg_raw"])
+
+        if self.mujoco:
+            self.mujoco.set_action(last_action)
+            self._current_mujoco_action = last_action
+
+        self._chat_result.config(
+            text=f"Fleet fix: 1 decode \u2192 "
+                 f"{len(stuck)} individualized actions",
+            fg=GREEN)
+
+    # -----------------------------------------------------------------
+    #  HELPERS
+    # -----------------------------------------------------------------
+
+    def _update_metrics(self, result):
+        lat = result["latency"]
+        conf = result["confidence"]
+        action = result["action"]
+
         lat_color = GREEN if lat < 50 else YELLOW if lat < 100 else RED
         self._m_lat.config(text=f"{lat:.0f}ms", fg=lat_color)
 
@@ -804,41 +1177,25 @@ class ControlPanel:
         self._m_win.config(
             text=f"{result['n_windows']}/{result['n_windows']}", fg=TEXT)
 
-        # --- Update chat result ---
-        self._chat_result.config(
-            text=f"Decoded: {label} EEG \u2192 {action} "
-                 f"({lat:.0f}ms, conf {conf:.2f}) \u2192 Robot #{target.id}",
-            fg=GREEN)
-
-        # --- Update fleet robot ---
-        target.state = "override"
-        target.override_action = action
-        target.override_timer = 3.0
-        target.flash_tick = 0
-        if self.stuck_robot == target:
-            self.stuck_robot = None
-        self._override_target = target
-
-        # --- Update MuJoCo ---
-        if self.mujoco:
-            self.mujoco.set_action(action)
-            self._current_mujoco_action = action
-
-        # --- Update EEG preview ---
-        self._draw_eeg(result["eeg_raw"])
-
-    def _show_all_autonomous(self):
-        """Reset override display to idle state."""
-        self._ov_status.config(text="ALL ROBOTS AUTONOMOUS", fg="#1a4d2e")
-        self._ov_action.config(text="", fg=GRAY)
-        self._ov_detail.config(text="")
-
-    # -----------------------------------------------------------------
-    #  EEG PREVIEW
-    # -----------------------------------------------------------------
+    def _update_efficiency(self):
+        if self.total_commands_issued == 0:
+            self._m_eff.config(
+                text="Session: Awaiting first command...", fg=DIM)
+            return
+        ratio = self.total_robots_overridden / self.total_commands_issued
+        if self.total_robots_overridden > 0:
+            reduction = ((self.total_robots_overridden - self.total_commands_issued)
+                         / self.total_robots_overridden) * 100
+        else:
+            reduction = 0
+        self._m_eff.config(
+            text=f"Session: {self.total_robots_overridden} robots fixed with "
+                 f"{self.total_commands_issued} commands | "
+                 f"Efficiency: {ratio:.1f}x leverage "
+                 f"({reduction:.0f}% fewer commands)",
+            fg=GREEN if ratio > 1 else DIM)
 
     def _draw_eeg(self, eeg_raw):
-        """Draw 6-channel EEG waveform in the preview canvas."""
         ax = self._eeg_ax
         ax.clear()
         ax.set_facecolor(BG2)
@@ -875,33 +1232,91 @@ class ControlPanel:
     def _toggle_autoplay(self):
         self.autoplay = not self.autoplay
         if self.autoplay:
-            self._autoplay_idx = 0
-            self._autoplay_timer = 1.0  # first signal after 1s
+            self._autoplay_step = 0
+            self._autoplay_timer = 3.0
+            self._autoplay_retry = False
             self.root.title(
                 "ThoughtLink | AUTO-PLAY ON | Press A to stop, Q to quit")
         else:
             self.root.title(
-                "ThoughtLink: Multi-Robot Orchestration | A=auto-play  Q=quit")
+                "ThoughtLink: 100-Robot Fleet | A=auto-play  Q=quit")
 
-    def _autoplay_next(self):
-        """Trigger the next signal in the auto-play cycle."""
-        labels = list(DEMO_FILES.keys())
+    def _autoplay_tick(self, dt):
+        """Called each frame during auto-play when pipeline is idle."""
+        self._autoplay_timer -= dt
+        if self._autoplay_timer > 0:
+            return
 
-        # Ensure a stuck robot exists
-        if self.stuck_robot is None or self.stuck_robot.state != "stuck":
-            autonomous = [r for r in self.robots if r.state == "autonomous"]
-            if autonomous:
-                robot = random.choice(autonomous)
-                robot.state = "stuck"
-                robot.flash_tick = 0
-                self.stuck_robot = robot
-                self._ov_status.config(
-                    text=f"ROBOT #{robot.id} NEEDS OVERRIDE", fg=RED)
+        if self._autoplay_step >= 5:
+            # Auto-play complete
+            self.autoplay = False
+            if self.total_commands_issued > 0:
+                ratio = self.total_robots_overridden / self.total_commands_issued
+                self._chat_result.config(
+                    text=f"Auto-play complete: "
+                         f"{self.total_robots_overridden} robots fixed with "
+                         f"{self.total_commands_issued} commands "
+                         f"({ratio:.1f}x leverage)",
+                    fg=GREEN)
+            self.root.title(
+                "ThoughtLink: 100-Robot Fleet | A=auto-play  Q=quit")
+            return
 
-        label = labels[self._autoplay_idx % len(labels)]
-        self._autoplay_idx += 1
+        # Ensure stuck robots exist
+        stuck = [r for r in self.robots if r.state == "stuck"]
+        if not stuck:
+            if not self._autoplay_retry:
+                self._autoplay_retry = True
+                self._force_robots_stuck()
+                self._autoplay_timer = 2.0
+                return
+            else:
+                self._force_robots_stuck()
+                self._autoplay_retry = False
+
+        step = self._autoplay_step
+
+        if step == 0:   # Layer 3: group fix
+            g = self._find_group_with_stuck()
+            if g:
+                label = random.choice(list(DEMO_FILES.keys()))
+                self._run_decode(label, cmd_type="group_fix", group=g)
+        elif step == 1: # Layer 2: group direction
+            g = self._find_group_with_stuck()
+            if g:
+                self._run_decode("Left Fist", cmd_type="group_direction",
+                                 group=g)
+        elif step == 2: # Layer 1: single button
+            self._run_decode("Right Fist", cmd_type="single")
+        elif step == 3: # Layer 3 again
+            g = self._find_group_with_stuck()
+            if g:
+                label = random.choice(list(DEMO_FILES.keys()))
+                self._run_decode(label, cmd_type="group_fix", group=g)
+        elif step == 4: # Layer 3 fleet-wide
+            label = random.choice(list(DEMO_FILES.keys()))
+            self._run_decode(label, cmd_type="fix_all")
+
+        self._autoplay_step += 1
+        self._autoplay_retry = False
         self._autoplay_timer = 5.0
-        self._run_decode(label)
+
+    def _find_group_with_stuck(self):
+        groups = list(set(r.group_id for r in self.robots
+                         if r.state == "stuck"))
+        return random.choice(groups) if groups else None
+
+    def _force_robots_stuck(self):
+        """Force 3-5 random robots to get stuck (for auto-play)."""
+        autonomous = [r for r in self.robots if r.state == "autonomous"]
+        n = min(random.randint(3, 5), len(autonomous))
+        if n == 0:
+            return
+        for robot in random.sample(autonomous, n):
+            robot.state = "stuck"
+            robot.flash_tick = 0
+            robot.failure_reason = random.choice(FAILURE_REASONS)
+        self._update_stuck_display()
 
     # -----------------------------------------------------------------
     #  QUIT
@@ -925,13 +1340,13 @@ def main():
     print("=" * 60)
     print()
 
-    # Start MuJoCo (optional — opens its own window)
+    # Start MuJoCo (optional -- opens its own window)
     mujoco = MuJoCoRunner()
     mujoco.start()
 
     # Create tkinter window on right half of screen
     root = tk.Tk()
-    root.title("ThoughtLink: Multi-Robot Orchestration | A=auto-play  Q=quit")
+    root.title("ThoughtLink: 100-Robot Fleet | A=auto-play  Q=quit")
     root.configure(bg=BG)
 
     screen_w = root.winfo_screenwidth()
@@ -939,7 +1354,7 @@ def main():
     win_w = screen_w // 2
     win_h = screen_h - 80
     root.geometry(f"{win_w}x{win_h}+{screen_w // 2}+0")
-    root.minsize(700, 750)
+    root.minsize(700, 850)
 
     panel = ControlPanel(root, mujoco)
 
@@ -947,6 +1362,7 @@ def main():
         panel._quit()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
+    print("DONE")
     root.mainloop()
 
 
