@@ -110,28 +110,13 @@ The 6 EEG channels are:
 
 4 of 6 channels are frontal -- not over motor cortex. FCz and CPz are closest to motor areas and dominate feature importance.
 
-## Honest Limitations
+## Limitations
 
 1. **6 channels vs 64+**: Research BCI systems use 64-256 channels. Our 6-channel system has limited spatial resolution.
 2. **Frontal-heavy montage**: Motor imagery signals are strongest at C3/C4, which are not measured.
 3. **Cross-subject difficulty**: Without per-user calibration, accuracy is fundamentally limited.
 4. **4-class direction is modest**: 27.9% (vs 25% random) is above chance but not practically reliable for fine control.
 5. **Offline processing**: We process pre-recorded .npz files, not live EEG streams.
-
-## Judging Criteria Mapping
-
-| Criterion | Our Approach |
-|-----------|-------------|
-| **Decoding Accuracy** | 79.4% binary (cross-subject), 27.9% 4-class direction |
-| **Inference Latency** | 31ms headless, ~55ms with feature extraction (per window) |
-| **Temporal Stability** | MajorityVote + Hysteresis + ConfidenceGate = 92.9% flicker reduction |
-| **False Trigger Rate** | Binary gate prevents active commands during rest |
-| **Scalability** | ~35 robots/core at 1 Hz, cross-subject (no calibration) |
-| **Phase-Aware Modeling** | INITIATION / SUSTAINED / RELEASE detection |
-| **Multimodal Fusion** | Explored TD-NIRS; EEG alone is sufficient (honest negative result) |
-| **Temporal Embeddings** | PCA trajectories showing intent evolution within recordings |
-| **Model Comparison** | RF vs MLP: hand-crafted features beat raw neural network |
-| **Demo Clarity** | 6-panel visual demo, MuJoCo sim, override scenario |
 
 ## Data Flow
 
